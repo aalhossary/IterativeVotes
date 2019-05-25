@@ -1,7 +1,5 @@
-from ntu.votes.algo import UpdateEvent
 from ntu.votes.candidate import Candidate
 from ntu.votes.utility import Utility, BordaUtility
-# from ntu.votes.algo import ProfilePreference, SinglePeakedProfilePreference
 
 __doc__ = """
 Define different types of voters
@@ -48,6 +46,16 @@ class Voter:
     def get_truthful_vote(self) -> Candidate:
         return self.profile[0]
 
+    class UpdateEvent:
+        # def __init__(self, source: Voter = None, frm: Candidate = None, to: Candidate = None):
+        def __init__(self, source=None, frm: Candidate = None, to: Candidate = None):
+            self.source = source
+            self.frm = frm
+            self.to = to
+
+        def __repr__(self):
+            return str((self.source, self.frm, self.to))
+
     def vote(self, current_state: list) -> UpdateEvent:
         if self.profile is None:
             raise RuntimeError("Please create a profile first")
@@ -55,14 +63,14 @@ class Voter:
 
 class GeneralVoter(Voter):
 
-    def vote(self, current_state: list) -> UpdateEvent:
+    def vote(self, current_state: list) -> Voter.UpdateEvent:
         super().vote(current_state)
         return
 
 
 class TruthfulVoter(Voter):
 
-    def vote(self, current_state: list) -> UpdateEvent:
+    def vote(self, current_state: list) -> Voter.UpdateEvent:
         super().vote(current_state)
         return
 
@@ -70,12 +78,23 @@ class TruthfulVoter(Voter):
 class LazyVoter(Voter):
     abstain: bool = False
 
-    def vote(self, current_state: list) -> UpdateEvent:
+    def vote(self, current_state: list) -> Voter.UpdateEvent:
         if self.abstain:
             return current_state
         super().vote(current_state)
         return
 
+
+
+
+class Status:
+    __votes__ = {}
+
+    def fillstatus(self, profile):
+        votes = {}
+
+
+######################################
 
 if __name__ == '__main__':
     g = Voter.make_general_voter(2)
@@ -84,3 +103,4 @@ if __name__ == '__main__':
     print(t)
     lzy = Voter.make_lazy_voter(2)
     print(lzy)
+
