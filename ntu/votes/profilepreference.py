@@ -53,11 +53,10 @@ if __name__ == '__main__':
     print(sorted(cc))
 
     # ------------------------
-    preference: ProfilePreference = None
-    preference = SinglePeakedProfilePreference
+    preference: ProfilePreference = SinglePeakedProfilePreference()
     print(preference.build_profile(Voter(2), cc))
 
-    preference = GeneralProfilePreference
+    preference = GeneralProfilePreference()
     print(preference.build_profile(Voter(2), cc))
     print(preference.build_profile(Voter(2), cc))
 
