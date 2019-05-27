@@ -1,20 +1,25 @@
 
 from ntu.votes.candidate import *
+from ntu.votes.tiebreaking import TieBreakingRule
 
 
 class Utility(object):
-    @classmethod
-    def score(cls, voter_profile: list, candidate: Candidate) -> int:
+    def score(self, voter_profile: list, candidate: Candidate) -> int:
         raise NotImplementedError
 
-    @classmethod
-    def __call__(cls, voter_profile: list, candidate: Candidate) -> int:
-        return cls.score(voter_profile, candidate)
+    def __call__(self, voter_profile: list, candidate: Candidate) -> int:
+        return self.score(voter_profile, candidate)
+
+    def total_utility(self, user_profile: list, potential_winners: list, tiebreakingrule: TieBreakingRule) -> float:
+        total = 0.0
+        for candidate in potential_winners:
+            total += (self.score(user_profile, candidate)
+                    * tiebreakingrule.winning_probability(potential_winners, candidate))
+        return total
 
 
 class BordaUtility(Utility):
-    @classmethod
-    def score(cls, voter_profile: list, candidate: Candidate) -> int:
+    def score(self, voter_profile: list, candidate: Candidate) -> int:
         try:
             return len(voter_profile) - voter_profile.index(candidate) - 1
         except ValueError:
@@ -22,13 +27,19 @@ class BordaUtility(Utility):
 
 
 class ExpoUtility(Utility):
-    @classmethod
-    def score(cls, voter_profile: list, candidate: Candidate) -> int:
+
+    def __init__(self, base: int = 2, exponent_step: int = 1):
+        if base:
+            self.base = base
+        if exponent_step:
+            self.exponent_step= exponent_step
+
+    def score(self, voter_profile: list, candidate: Candidate) -> int:
         index = voter_profile.index(candidate)
         if index < 0:
             raise ValueError(f"Candidate {candidate} not found")
         else:
-            return  2 ** (len(voter_profile) - index -1)
+            return self.base ** (self.exponent_step * (len(voter_profile) - index - 1))
 
 
 if __name__ == '__main__':
@@ -56,4 +67,20 @@ if __name__ == '__main__':
     print(utility.score(profile, profile[0]))
     print(utility.score(profile, profile[-1]))
     print(utility.score(profile, Candidate('B', 1)))
-    # print(utility.score(profile, Candidate('B', 5)))
+    # print(utility(profile, Candidate('B', 5)))
+
+    print()
+    utility = ExpoUtility(3, 2)
+
+    print(utility(profile, profile[0]))
+    print(utility(profile, profile[-1]))
+    print(utility(profile, Candidate('B', 1)))
+    # print(utility(profile, Candidate('B', 5)))
+
+    print()
+    utility = ExpoUtility(3)
+
+    print(utility(profile, profile[0]))
+    print(utility(profile, profile[-1]))
+    print(utility(profile, Candidate('B', 1)))
+    # print(utility(profile, Candidate('B', 5)))
