@@ -1,4 +1,5 @@
 import operator
+from enum import Enum, auto
 
 from ntu.votes.candidate import Candidate
 # from ntu.votes.profilepreference import SinglePeakedProfilePreference
@@ -68,6 +69,12 @@ class Status:
         return  new
 
 
+class VoterTypes(Enum):
+    GeneralVoter = auto()
+    TruthfulVoter = auto()
+    LazyVoter = auto()
+
+
 class Voter:
 
     position: int = None
@@ -89,20 +96,12 @@ class Voter:
         self.most_recent_vote = self.get_truthful_vote()
 
     @classmethod
-    def make_general_voter(cls, position: int, utility: Utility = BordaUtility):
-        new = cls.__new__(Voter)
-        cls.__init__(new, position, utility)
-        return new
-
-    @classmethod
-    def make_truthful_voter(cls, position: int, utility: Utility = BordaUtility):
-        new = cls.__new__(TruthfulVoter)
-        cls.__init__(new, position, utility)
-        return new
-
-    @classmethod
-    def make_lazy_voter(cls, position: int, utility: Utility = BordaUtility):
-        new = cls.__new__(LazyVoter)
+    def make_voter(cls, voter_type: VoterTypes, position: int, utility: Utility = BordaUtility) -> 'Voter':
+        new = {
+            VoterTypes.GeneralVoter: cls.__new__(GeneralVoter),
+            VoterTypes.TruthfulVoter: cls.__new__(TruthfulVoter),
+            VoterTypes.LazyVoter: cls.__new__(LazyVoter),
+        }.get(voter_type, None)
         cls.__init__(new, position, utility)
         return new
 
@@ -164,7 +163,7 @@ class Voter:
 
         if len(potential_updates) == 0 :
             'I can not improve'
-            return UpdateEvent(self, None, None)
+            return UpdateEvent(self, frm, None)
         else:
             "TODO enhance the selection process: select the nearest candidate to me among several alternatives"
             "TODO was the previous line in the requirements?"
@@ -178,61 +177,76 @@ class Voter:
             to = potential_updates[0][1]
             return UpdateEvent(self, frm, to)
 
-    def vote(self, current_state: list) -> UpdateEvent:
+    def vote(self, current_state: Status, tiebreakingrule: TieBreakingRule=None) -> UpdateEvent:
         if self.profile is None:
             raise RuntimeError("Please create a profile first")
-        return None
+        return self.propose_enhancement(current_state, tiebreakingrule)
 
 
 class GeneralVoter(Voter):
 
-    def vote(self, current_state: list) -> UpdateEvent:
+    def vote(self, current_state: Status, tiebreakingrule: TieBreakingRule=None) -> UpdateEvent:
         super().vote(current_state)
-        return
+        return self.propose_enhancement(current_state, tiebreakingrule)
 
 
 class TruthfulVoter(Voter):
 
-    def vote(self, current_state: list) -> UpdateEvent:
+    def vote(self, current_state: Status, tiebreakingrule: TieBreakingRule=None) -> UpdateEvent:
         super().vote(current_state)
-        return
+        update = self.propose_enhancement(current_state, tiebreakingrule)
+        if update.to is None:
+            update.to = self.get_truthful_vote()
+        return update
 
 
 class LazyVoter(Voter):
-    abstain: bool = False
 
-    def vote(self, current_state: list) -> UpdateEvent:
+    def __init__(self, position: int, utility: Utility = BordaUtility):
+        super(LazyVoter, self).__init__(self, position, utility)
+        self.abstain: bool = False
+        self.abstain_event = UpdateEvent(self)
+
+    def vote(self, current_state: Status, tiebreakingrule: TieBreakingRule=None) -> UpdateEvent:
         if self.abstain:
-            return UpdateEvent(self)
+            return self.abstain_event
+
         super().vote(current_state)
-        update = self.propose_update(self, current_state)
-        return
+        update = self.propose_enhancement(current_state, tiebreakingrule)
+        if update.to is None:
+            self.abstain = True
+            # TODO revise what should be returned (self, None, Candidate.NONE)
+            #  or (self, most_recent_vote, Candidate.NONE).
+            # update.to = Candidate.NONE
+            update = self.abstain_event
+        return update
 
 
 ######################################
 if __name__ == '__main__':
-    g = Voter.make_general_voter(2)
+    g = Voter.make_voter(VoterTypes.GeneralVoter, 2)
     print(g)
-    t = Voter.make_truthful_voter(2)
+    t = Voter.make_voter(VoterTypes.TruthfulVoter, 2)
     print(t)
-    lzy = Voter.make_lazy_voter(2)
+    lzy = Voter.make_voter(VoterTypes.LazyVoter, 2)
     print(lzy)
 
-    status = Status.from_profile(
-        [
-            [Candidate('A', 1), Candidate('B', 2), Candidate('C', 3)],
-            [Candidate('A', 1), Candidate('B', 2), Candidate('C', 3)],
-            [Candidate('E', 5), Candidate('A', 1), Candidate('C', 3)],
-            [Candidate('E', 5), Candidate('A', 1), Candidate('C', 3)],
-            [Candidate('E', 5), Candidate('A', 1), Candidate('C', 3)],
-            [Candidate('D', 4), Candidate('A', 1), Candidate('C', 3)],
-            [Candidate('D', 4), Candidate('A', 1), Candidate('C', 3)],
-            [Candidate('D', 4), Candidate('A', 1), Candidate('C', 3)],
-            [Candidate('B', 2), Candidate('A', 1), Candidate('C', 3)],
-            [Candidate('B', 2), Candidate('A', 1), Candidate('C', 3)],
-            [Candidate('C', 3), Candidate('A', 1), Candidate('B', 2)],
-        ]
-    )
+    print(Voter.make_voter(VoterTypes.TruthfulVoter, 4))
+    print(Voter.make_voter(VoterTypes.LazyVoter, 3))
+
+    status = Status.from_profile([
+        [Candidate('A', 1), Candidate('B', 2), Candidate('C', 3)],
+        [Candidate('A', 1), Candidate('B', 2), Candidate('C', 3)],
+        [Candidate('E', 5), Candidate('A', 1), Candidate('C', 3)],
+        [Candidate('E', 5), Candidate('A', 1), Candidate('C', 3)],
+        [Candidate('E', 5), Candidate('A', 1), Candidate('C', 3)],
+        [Candidate('D', 4), Candidate('A', 1), Candidate('C', 3)],
+        [Candidate('D', 4), Candidate('A', 1), Candidate('C', 3)],
+        [Candidate('D', 4), Candidate('A', 1), Candidate('C', 3)],
+        [Candidate('B', 2), Candidate('A', 1), Candidate('C', 3)],
+        [Candidate('B', 2), Candidate('A', 1), Candidate('C', 3)],
+        [Candidate('C', 3), Candidate('A', 1), Candidate('B', 2)],
+        ])
     orderedCandidates = status.in_order()
     print(orderedCandidates)
     print(status.winners)

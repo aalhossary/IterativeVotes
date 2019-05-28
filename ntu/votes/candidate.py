@@ -1,4 +1,9 @@
+# from __future__ import annotations
+
+
 class Candidate:
+
+    NONE = None
     __doc__ = "One of alternatives to be selected in the voting process"
 
     def __init__(self, name='', position=None):
@@ -23,12 +28,14 @@ class Candidate:
         if isinstance(other, Candidate):
             return abs(self.position - other.position)
         else:
-            'assume other is a number (representing a position)'
+            # Assume other is a number (representing a position)
             return abs(self.position - other)
 
 
+Candidate.NONE = Candidate()
+
 all_candidates: list = []
-#TODO fill all_candidates with candidates
+# TODO fill all_candidates with candidates
 
 
 if __name__ == '__main__':
