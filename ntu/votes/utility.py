@@ -1,9 +1,11 @@
+from enum import Enum, auto
 
 from ntu.votes.candidate import *
 from ntu.votes.tiebreaking import TieBreakingRule
 
 
 class Utility(object):
+
     def score(self, voter_profile: list, candidate: Candidate) -> int:
         raise NotImplementedError
 
@@ -17,8 +19,18 @@ class Utility(object):
                     * tiebreakingrule.winning_probability(potential_winners, candidate))
         return total
 
+    @classmethod
+    def make_utility(cls, utility_type: str) -> 'Utility':
+        new = {
+            UtilityTypes.BordaUtility.name: cls.__new__(BordaUtility),
+            UtilityTypes.ExpoUtility.name: cls.__new__(ExpoUtility),
+        }.get(utility_type, None)
+        cls.__init__(new)
+        return new
+
 
 class BordaUtility(Utility):
+
     def score(self, voter_profile: list, candidate: Candidate) -> int:
         try:
             return len(voter_profile) - voter_profile.index(candidate) - 1
@@ -29,6 +41,11 @@ class BordaUtility(Utility):
 class ExpoUtility(Utility):
 
     def __init__(self, base: int = 2, exponent_step: int = 1):
+        """If you are going to parameterize this callable, please use the direct constructor, not make_utility().
+
+        :param base:
+        :param exponent_step:
+        """
         if base:
             self.base = base
         if exponent_step:
@@ -42,6 +59,11 @@ class ExpoUtility(Utility):
             return self.base ** (self.exponent_step * (len(voter_profile) - index - 1))
 
 
+class UtilityTypes(Enum):
+    BordaUtility = auto()
+    ExpoUtility = auto()
+
+
 if __name__ == '__main__':
     profile = []
     for i in range(10):
@@ -50,12 +72,9 @@ if __name__ == '__main__':
         profile.append(a)
 
     print()
-    utility = BordaUtility()
+    # utility = BordaUtility()
+    utility = Utility.make_utility('BordaUtility')
 
-    # print(utility.score(profile, profile[0]))
-    # print(utility.score(profile, profile[-1]))
-    # print(utility.score(profile, Candidate('B', 1)))
-    # # print(utility.score(profile, Candidate('B', 5)))
     print(utility(profile, profile[0]))
     print(utility(profile, profile[-1]))
     print(utility(profile, Candidate('B', 1)))
@@ -63,6 +82,7 @@ if __name__ == '__main__':
 
     print()
     utility = ExpoUtility()
+    # utility = Utility.make_utility('ExpoUtility')
 
     print(utility.score(profile, profile[0]))
     print(utility.score(profile, profile[-1]))

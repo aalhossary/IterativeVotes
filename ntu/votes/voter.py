@@ -96,11 +96,11 @@ class Voter:
         self.most_recent_vote = self.get_truthful_vote()
 
     @classmethod
-    def make_voter(cls, voter_type: VoterTypes, position: int, utility: Utility = BordaUtility) -> 'Voter':
+    def make_voter(cls, voter_type: str, position: int, utility: Utility = BordaUtility) -> 'Voter':
         new = {
-            VoterTypes.GeneralVoter: cls.__new__(GeneralVoter),
-            VoterTypes.TruthfulVoter: cls.__new__(TruthfulVoter),
-            VoterTypes.LazyVoter: cls.__new__(LazyVoter),
+            VoterTypes.GeneralVoter.name: cls.__new__(GeneralVoter),
+            VoterTypes.TruthfulVoter.name: cls.__new__(TruthfulVoter),
+            VoterTypes.LazyVoter.name: cls.__new__(LazyVoter),
         }.get(voter_type, None)
         cls.__init__(new, position, utility)
         return new
@@ -224,15 +224,15 @@ class LazyVoter(Voter):
 
 ######################################
 if __name__ == '__main__':
-    g = Voter.make_voter(VoterTypes.GeneralVoter, 2)
+    g = Voter.make_voter('GeneralVoter', 2)
     print(g)
-    t = Voter.make_voter(VoterTypes.TruthfulVoter, 2)
+    t = Voter.make_voter('TruthfulVoter', 2)
     print(t)
-    lzy = Voter.make_voter(VoterTypes.LazyVoter, 2)
+    lzy = Voter.make_voter('LazyVoter', 2)
     print(lzy)
 
-    print(Voter.make_voter(VoterTypes.TruthfulVoter, 4))
-    print(Voter.make_voter(VoterTypes.LazyVoter, 3))
+    print(Voter.make_voter('TruthfulVoter', 4))
+    print(Voter.make_voter('LazyVoter', 3))
 
     status = Status.from_profile([
         [Candidate('A', 1), Candidate('B', 2), Candidate('C', 3)],
