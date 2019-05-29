@@ -40,7 +40,7 @@ class Status:
         new.votes = {}
         for candidate in votes:
             new.votes[candidate] = new.votes.get(candidate, 0) + 1
-        ordered = new.in_order()
+        new.in_order()
         return new
 
     def in_order(self) -> list:
@@ -48,10 +48,10 @@ class Status:
         lst = list(self.votes.items())
         """If using Python 3.7, dictionary order is guaranteed to be preserved"""
         lst.sort(key=operator.itemgetter(1), reverse=True)
-        self.cache_top_candidates(lst)
+        self.__cache_top_candidates(lst)
         return lst
 
-    def cache_top_candidates(self, ordered: list):
+    def __cache_top_candidates(self, ordered: list):
         top_score = ordered[0][1]
         self.winners = [candidate for (candidate, freq) in ordered if freq == top_score]
         self.runner_ups = [candidate for (candidate, freq) in ordered if freq == top_score - 1]
@@ -66,7 +66,11 @@ class Status:
             new.winners = self.winners.copy()
         if self.runner_ups:
             new.runner_ups = self.runner_ups.copy()
-        return  new
+        return new
+
+    def __repr__(self):
+        # return str([candidate.name[0] for (candidate, freq) in self.votes.items()])
+        return str(list(self.in_order()))
 
 
 class VoterTypes(Enum):
@@ -111,7 +115,7 @@ class Voter:
     def getprofile(self) -> list:
         return self.profile
 
-    def propose_enhancement(self, current_status: Status, tiebreakingrule: TieBreakingRule) -> UpdateEvent:
+    def propose_enhancement(self, current_status: Status, tie_breaking_rule: TieBreakingRule) -> UpdateEvent:
         """Evaluate the current status and return an update event
 
         - In case the voter is satistfied, frm and to will be the same.
@@ -122,7 +126,7 @@ class Voter:
                 --- LazyVoter can populate to with NO_OPTION
 
         :param current_status: the actual current status object
-        :param tiebreakingrule: the tie breaking rule in effect (lexicographically or random)
+        :param tie_breaking_rule: the tie breaking rule in effect (lexicographically or random)
         :return:
         """
         utility = self.utility
@@ -132,13 +136,13 @@ class Voter:
 
         'The only case I am fully satisfied'
         if len(winners) == 1 and winners[0] == self.get_truthful_vote():
-            return UpdateEvent(self,frm,frm)
+            return UpdateEvent(self, frm, frm)
 
         """OK He is not the winner, can I promote one of the top drawers (My choice may or may not be among them), to 
         be the sole winner?"""
         "Update: I am going to include the runner ups list in the same loop:"
         "Let's now try to upgrade one of the runner ups to compete with top list" """(as well)"""
-        current_utility = utility.total_utility(self.profile, winners, tiebreakingrule)
+        current_utility = utility.total_utility(self.profile, winners, tie_breaking_rule)
         proposed_status = current_status.copy()
         potential_updates = []
         # for candidate in winners:
@@ -153,48 +157,49 @@ class Voter:
             proposed_status.votes[candidate] = proposed_status.votes[candidate] + 1
             proposed_status.in_order()
 
-            potential_utility = utility.total_utility(self.profile, proposed_status.winners, tiebreakingrule)
+            potential_utility = utility.total_utility(self.profile, proposed_status.winners, tie_breaking_rule)
             if potential_utility > current_utility:
-                potential_updates.append((potential_utility, candidate))
+                # potential_updates.append((potential_utility, candidate))
+                potential_updates.append((potential_utility, candidate, current_utility))
 
             proposed_status.votes[frm] = proposed_status.votes[frm] + 1
             proposed_status.votes[candidate] = proposed_status.votes[candidate] - 1
         proposed_status.in_order()
 
-        if len(potential_updates) == 0 :
+        if len(potential_updates) == 0:
             'I can not improve'
             return UpdateEvent(self, frm, None)
         else:
-            "TODO enhance the selection process: select the nearest candidate to me among several alternatives"
-            "TODO was the previous line in the requirements?"
-            potential_updates.sort(key=operator.itemgetter(0, 1), reverse=True)
+            potential_updates.sort(key=operator.itemgetter(0), reverse=True)
 
             # Is there a (map / filter) way to do the next line?
             potential_updates = [update for update in potential_updates if update[0] == potential_updates[0][0]]
+            print(potential_updates)
+            # enhance the selection process: select the nearest candidate to me among several alternatives
+            "TODO was the previous line in the requirements?"
             if len(potential_updates) > 1:
-                potential_updates.sort(key=lambda update: (update[0]).distance_to(self.position))
+                potential_updates.sort(key=lambda update: (update[1]).distance_to(self.position))
 
             to = potential_updates[0][1]
+            self.most_recent_vote = to
             return UpdateEvent(self, frm, to)
 
-    def vote(self, current_state: Status, tiebreakingrule: TieBreakingRule=None) -> UpdateEvent:
+    def vote(self, current_state: Status, tie_breaking_rule: TieBreakingRule = None) -> UpdateEvent:
         if self.profile is None:
             raise RuntimeError("Please create a profile first")
-        return self.propose_enhancement(current_state, tiebreakingrule)
+        return self.propose_enhancement(current_state, tie_breaking_rule)
 
 
 class GeneralVoter(Voter):
 
-    def vote(self, current_state: Status, tiebreakingrule: TieBreakingRule=None) -> UpdateEvent:
-        super().vote(current_state)
-        return self.propose_enhancement(current_state, tiebreakingrule)
+    def vote(self, current_state: Status, tie_breaking_rule: TieBreakingRule = None) -> UpdateEvent:
+        return super(GeneralVoter, self).vote(current_state, tie_breaking_rule)
 
 
 class TruthfulVoter(Voter):
 
-    def vote(self, current_state: Status, tiebreakingrule: TieBreakingRule=None) -> UpdateEvent:
-        super().vote(current_state)
-        update = self.propose_enhancement(current_state, tiebreakingrule)
+    def vote(self, current_state: Status, tie_breaking_rule: TieBreakingRule = None) -> UpdateEvent:
+        update = super(TruthfulVoter, self).vote(current_state, tie_breaking_rule)
         if update.to is None:
             update.to = self.get_truthful_vote()
         return update
@@ -203,16 +208,14 @@ class TruthfulVoter(Voter):
 class LazyVoter(Voter):
 
     def __init__(self, position: int, utility: Utility = BordaUtility):
-        super(LazyVoter, self).__init__(self, position, utility)
+        super(LazyVoter, self).__init__(position, utility)
         self.abstain: bool = False
         self.abstain_event = UpdateEvent(self)
 
-    def vote(self, current_state: Status, tiebreakingrule: TieBreakingRule=None) -> UpdateEvent:
+    def vote(self, current_state: Status, tie_breaking_rule: TieBreakingRule = None) -> UpdateEvent:
         if self.abstain:
             return self.abstain_event
-
-        super().vote(current_state)
-        update = self.propose_enhancement(current_state, tiebreakingrule)
+        update = super(LazyVoter, self).vote(current_state, tie_breaking_rule)
         if update.to is None:
             self.abstain = True
             # TODO revise what should be returned (self, None, Candidate.NONE)
@@ -251,5 +254,3 @@ if __name__ == '__main__':
     print(orderedCandidates)
     print(status.winners)
     print(status.runner_ups)
-
-

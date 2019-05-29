@@ -28,8 +28,8 @@ class TieBreakingRule:
     @staticmethod
     def check_list_length(potential_winners):
         ln = len(potential_winners)
-        if ln < 2:
-            raise ValueError(f'There is no tie. List has only {ln} candidate(s)')
+        if ln < 1:
+            raise ValueError(f'List is empty')
 
 
 class LexicographicTieBreakingRule(TieBreakingRule):
