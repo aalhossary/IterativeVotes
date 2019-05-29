@@ -5,7 +5,7 @@ from ntu.votes import utility
 from ntu.votes.candidate import *
 from ntu.votes.profilepreference import *
 from ntu.votes.tiebreaking import *
-from ntu.votes.utility import ExpoUtility, UtilityTypes
+from ntu.votes.utility import *
 from ntu.votes.voter import *
 
 # =======================
@@ -15,7 +15,6 @@ __doc__ = """
 •	Number of repeated runs per preference profile is 50 (random iteration sequences per profile)
 
 """
-
 
 
 def main():
@@ -45,33 +44,81 @@ def main():
         'GeneralProfilePreference': GeneralProfilePreference(),
     }.get(args.preference, None)
 
-    tiebreakingrule = {
+    tie_breaking_rule = {
         'LexicographicTieBreakingRule': LexicographicTieBreakingRule(),
         'RandomTieBreakingRule': RandomTieBreakingRule(),
     }.get(args.tiebreakingrule, None)
 
-    # print(utility, preference, tiebreakingrule)
+    print(utility, preference, tie_breaking_rule)
 
     for n_candidates in range(5, 8):
         # number of n_candidates <= n_voters <= 12 #TODO verify this with L & Z
         for n_voters in range(n_candidates, 13):
             if n_voters % 2 == 1:
                 continue
+
+            print(f"\n------------ voters = {n_voters}, Candidates = {n_candidates}-------------------")
             all_candidates = generate_candidates(n_candidates)
-            print(all_candidates)
-            all_voters = generate_voters(n_voters, args.voters, utility)
-            print(all_voters)
+            # print(all_candidates)
+            all_voters = generate_voters(n_voters, args.voters, n_candidates, utility)
+            # print(all_voters)
+
+            # voters build their preferences
+            for voter in all_voters:
+                voter.build_profile(all_candidates, preference)
+            # collective profile
+            profile = [voter.getprofile() for voter in all_voters]
+            initial_status = Status.from_profile(profile)
+
+            # TODO from here, initialize every thing in every run (fork a function ?)
+            active_voters_indices = [i for i in range(len(all_voters))]
+            # now for the initial status
+            current_status = initial_status.copy()
+            print(current_status, "Initial state")
+            step = 0
+            while step < len(all_voters) * len(all_candidates):
+                # pick a voter from ACTIVE voters
+                index = random.choice(active_voters_indices)
+                voter = all_voters[index]
+                # ask him to vote
+                response = voter.vote(current_status, tie_breaking_rule)
+                print(current_status, response, end='\t')
+                # evaluate the status
+                if response.to is None:
+                    if isinstance(voter, LazyVoter):
+                        active_voters_indices.__delitem__(index)
+                        if not len(active_voters_indices):
+                            # conversed
+                            print("Conversion")
+                            break
+                elif response.frm is response.to:
+                    # voter was satisfied
+                    pass # TODO shall this happen? if yes, fill it
+                else:
+                    current_status.votes[response.frm] = current_status.votes[response.frm] - 1
+                    current_status.votes[response.to] = current_status.votes[response.to] + 1
+                    current_status.in_order()
+                    print("<-- enhancement", end='\t')
+                # step++
+                step += 1
+                print()
 
 
-def generate_voters(n_voters, voter_type, utility):
+def generate_voters(n_voters: int, voter_type, positions_range: int, utility):
     all_voters = []
     for i in range(n_voters):
-        v: Voter = Voter.make_voter(voter_type, i+1, utility)
+        v: Voter = Voter.make_voter(voter_type, random.randrange(positions_range), utility)
         all_voters.append(v)
     return all_voters
 
 
 def generate_candidates(n_candidates):
+    """We assume that they are (((uniformly))) distributed
+
+    TODO double check this
+    :param n_candidates:
+    :return:
+    """
     all_candidates = []
     for i in range(n_candidates):
         c: Candidate = Candidate(chr(b'A'[0]+i), i+1)
