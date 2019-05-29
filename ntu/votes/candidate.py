@@ -34,15 +34,23 @@ class Candidate:
 
 Candidate.NONE = Candidate()
 
-all_candidates: list = []
-# TODO fill all_candidates with candidates
-
 
 if __name__ == '__main__':
     a: Candidate = Candidate()
-    b: Candidate = Candidate('E', 5)
+    e: Candidate = Candidate('E', 5)
     print(a)
-    print(b)
+    print(e)
 
     print(a.__hash__())
-    print(b.__hash__())
+    print(e.__hash__())
+
+    a: Candidate = Candidate('A', 1)
+    b: Candidate = Candidate('B', 2)
+    c: Candidate = Candidate('C', 3)
+    d: Candidate = Candidate('D', 4)
+    e: Candidate = Candidate('E', 5)
+
+    lst = [a, e, c, b, d, b, b, d, e]
+    print(lst)
+    lst.sort()
+    print(lst)

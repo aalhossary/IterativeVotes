@@ -16,7 +16,7 @@ class Utility(object):
         total = 0.0
         for candidate in potential_winners:
             total += (self.score(user_profile, candidate)
-                    * tiebreakingrule.winning_probability(potential_winners, candidate))
+                      * tiebreakingrule.winning_probability(potential_winners, candidate))
         return total
 
     @classmethod
