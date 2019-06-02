@@ -1,11 +1,10 @@
-import random
-
+from random import Random
 from ntu.votes.candidate import Candidate
 
 
 class TieBreakingRule:
-    @staticmethod
-    def get_winner(potential_winners: list) -> Candidate:
+    @classmethod
+    def get_winner(cls, potential_winners: list) -> Candidate:
         """break a tie between potential winners
 
         :param potential_winners: the list (set ?) of potential winners with a tie
@@ -38,10 +37,10 @@ class LexicographicTieBreakingRule(TieBreakingRule):
 
     # sort_key = operator.attrgetter('name', 'position')
 
-    @staticmethod
-    def get_winner(potential_winners: list) -> Candidate:
+    @classmethod
+    def get_winner(cls, potential_winners: list) -> Candidate:
         TieBreakingRule.check_list_length(potential_winners)
-        sorted_list = sorted(potential_winners)#, key=LexicographicTieBreakingRule.sort_key)
+        sorted_list = sorted(potential_winners)  # , key=LexicographicTieBreakingRule.sort_key)
         return sorted_list[0]
 
     @staticmethod
@@ -55,12 +54,17 @@ class LexicographicTieBreakingRule(TieBreakingRule):
 
 
 class RandomTieBreakingRule(TieBreakingRule):
-    @staticmethod
-    def get_winner(potential_winners: list) -> Candidate:
+
+    rand = None
+
+    def __init__(self, rand: Random) -> None:
+        super().__init__()
+        self.__class__.rand = rand
+
+    @classmethod
+    def get_winner(cls, potential_winners: list) -> Candidate:
         TieBreakingRule.check_list_length(potential_winners)
-        'TODO consider using chaoises later'
-        'TODO ensure reproducibility'
-        return random.choice(potential_winners)
+        return cls.rand.choice(potential_winners)
 
     @staticmethod
     def winning_probability(potential_winners: list, candidate: Candidate):

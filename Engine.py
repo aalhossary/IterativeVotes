@@ -1,4 +1,5 @@
 import argparse
+from random import Random
 import sys
 
 from ntu.votes import utility
@@ -26,8 +27,12 @@ def main():
                         default='SinglePeakedProfilePreference')
     parser.add_argument("-t", "--tiebreakingrule", help="how to behave in cases of draws",
                         default='LexicographicTieBreakingRule')
+    parser.add_argument("-s", "--seed", help="initial seed",
+                        default=None)  # TODO update
 
     args = parser.parse_args()
+
+    rand = random.Random(args.seed)
 
     # if args.candidates:
     #     print("candidates = ", args.candidates)
@@ -46,11 +51,10 @@ def main():
 
     tie_breaking_rule = {
         'LexicographicTieBreakingRule': LexicographicTieBreakingRule(),
-        'RandomTieBreakingRule': RandomTieBreakingRule(),
+        'RandomTieBreakingRule': RandomTieBreakingRule(rand),
     }.get(args.tiebreakingrule, None)
 
     print(utility, preference, tie_breaking_rule)
-    seed = 1  # TODO use random
 
     for n_candidates in range(5, 8):
         # number of n_candidates <= n_voters <= 12 #TODO verify this with L & Z
@@ -60,9 +64,9 @@ def main():
 
             # for voter_types in ['GeneralVoter', ]
             print(f"\n------------ voters = {n_voters}, Candidates = {n_candidates}-------------------")
-            all_candidates = generate_candidates(n_candidates)
+            all_candidates = generate_candidates(n_candidates, rand)
             # print(all_candidates)
-            all_voters = generate_voters(n_voters, args.voters, n_candidates, utility)
+            all_voters = generate_voters(n_voters, args.voters, n_candidates, utility, rand)
             # print(all_voters)
 
             # voters build their preferences
@@ -72,11 +76,20 @@ def main():
             profile = [voter.getprofile() for voter in all_voters]
             initial_status = Status.from_profile(profile)
 
-            run_simulation(all_candidates, all_voters, initial_status, tie_breaking_rule, seed)
+            run_simulation(all_candidates, all_voters, initial_status, tie_breaking_rule, rand)
 
 
 def run_simulation(all_candidates: list, all_voters: list, current_status: Status, tie_breaking_rule: TieBreakingRule,
-                   seed: int) -> None:
+                   rand: Random) -> None:
+    """
+
+    :param tie_breaking_rule:
+    :param current_status:
+    :param all_voters:
+    :param all_candidates:
+    :param rand:
+    :type rand: Random
+    """
     # only increase
     abstaining_voters_indices = []
     # now for the initial status
@@ -98,7 +111,7 @@ def run_simulation(all_candidates: list, all_voters: list, current_status: Statu
         # Select one voter randomly from Current active_voters_indices list
         while len(active_voters_indices) > 0 and step < max_steps:
             # pick a voter from ACTIVE voters
-            index = random.choice(active_voters_indices)
+            index = rand.choice(active_voters_indices)
             voter = all_voters[index]
             # ask him to vote
             response = voter.vote(current_status, tie_breaking_rule)
@@ -121,7 +134,6 @@ def run_simulation(all_candidates: list, all_voters: list, current_status: Statu
                 current_status.in_order()
                 print("<-- enhancement", end='\t')
                 active_voters_indices.remove(index)
-            # step++
             step += 1
             print()
         else:
@@ -134,24 +146,20 @@ def converged():
     print("Converged")
 
 
-def generate_voters(n_voters: int, voter_type, positions_range: int, utility):
+def generate_voters(n_voters: int, voter_type, positions_range: int, utility: Utility, rand: Random):
     all_voters = []
     for i in range(n_voters):
-        v: Voter = Voter.make_voter(voter_type, random.randrange(positions_range), utility)
+        # v: Voter = Voter.make_voter(voter_type, rand.randrange(positions_range), utility)
+        v: Voter = Voter.make_voter(voter_type, rand.random(), utility)
         all_voters.append(v)
     return all_voters
 
 
-def generate_candidates(n_candidates):
-    """We assume that they are (((uniformly))) distributed
-
-    TODO double check this
-    :param n_candidates:
-    :return:
-    """
+def generate_candidates(n_candidates: int, rand: Random):
     all_candidates = []
     for i in range(n_candidates):
-        c: Candidate = Candidate(chr(b'A'[0]+i), i+1)
+        # c: Candidate = Candidate(chr(b'A'[0]+i), i+1)
+        c: Candidate = Candidate(chr(b'A'[0]+i), rand.random())
         all_candidates.append(c)
     return all_candidates
 
