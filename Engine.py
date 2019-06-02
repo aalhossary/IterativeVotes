@@ -50,6 +50,7 @@ def main():
     }.get(args.tiebreakingrule, None)
 
     print(utility, preference, tie_breaking_rule)
+    seed = 1  # TODO use random
 
     for n_candidates in range(5, 8):
         # number of n_candidates <= n_voters <= 12 #TODO verify this with L & Z
@@ -57,6 +58,7 @@ def main():
             if n_voters % 2 == 1:
                 continue
 
+            # for voter_types in ['GeneralVoter', ]
             print(f"\n------------ voters = {n_voters}, Candidates = {n_candidates}-------------------")
             all_candidates = generate_candidates(n_candidates)
             # print(all_candidates)
@@ -70,38 +72,66 @@ def main():
             profile = [voter.getprofile() for voter in all_voters]
             initial_status = Status.from_profile(profile)
 
-            # TODO from here, initialize every thing in every run (fork a function ?)
-            active_voters_indices = [i for i in range(len(all_voters))]
-            # now for the initial status
-            current_status = initial_status.copy()
-            print(current_status, "Initial state")
-            step = 0
-            while step < len(all_voters) * len(all_candidates):
-                # pick a voter from ACTIVE voters
-                index = random.choice(active_voters_indices)
-                voter = all_voters[index]
-                # ask him to vote
-                response = voter.vote(current_status, tie_breaking_rule)
-                print(current_status, response, end='\t')
-                # evaluate the status
-                if response.to is None:
-                    if isinstance(voter, LazyVoter):
-                        active_voters_indices.__delitem__(index)
-                        if not len(active_voters_indices):
-                            # conversed
-                            print("Conversion")
-                            break
-                elif response.frm is response.to:
-                    # voter was satisfied
-                    pass # TODO shall this happen? if yes, fill it
-                else:
-                    current_status.votes[response.frm] = current_status.votes[response.frm] - 1
-                    current_status.votes[response.to] = current_status.votes[response.to] + 1
-                    current_status.in_order()
-                    print("<-- enhancement", end='\t')
-                # step++
-                step += 1
-                print()
+            run_simulation(all_candidates, all_voters, initial_status, tie_breaking_rule, seed)
+
+
+def run_simulation(all_candidates: list, all_voters: list, current_status: Status, tie_breaking_rule: TieBreakingRule,
+                   seed: int) -> None:
+    # only increase
+    abstaining_voters_indices = []
+    # now for the initial status
+    print(current_status, "Initial state")
+    step = 0
+    max_steps = len(all_voters) * len(all_candidates)
+    while step < max_steps:
+        # recalculated every step, always decrease
+        active_voters_indices = [i for i in range(len(all_voters))]
+        if len(current_status.winners) < 2:
+            active_voters_indices = [i for i in active_voters_indices
+                                     if all_voters[i].most_recent_vote is not current_status.winners[0]]
+        else:
+            # TODO double check this condition
+            active_voters_indices = [i for i in active_voters_indices if tie_breaking_rule.winning_probability(
+                current_status.winners, all_voters[i].most_recent_vote) >= 1 / len(current_status.winners)]
+        active_voters_indices = [i for i in active_voters_indices if i not in abstaining_voters_indices]
+
+        # Select one voter randomly from Current active_voters_indices list
+        while len(active_voters_indices) > 0 and step < max_steps:
+            # pick a voter from ACTIVE voters
+            index = random.choice(active_voters_indices)
+            voter = all_voters[index]
+            # ask him to vote
+            response = voter.vote(current_status, tie_breaking_rule)
+            print(current_status, response, end='\t')
+            # evaluate the status
+            if response.to is None:
+                # couldn't enhance
+                active_voters_indices.remove(index)
+                if isinstance(voter, LazyVoter):
+                    abstaining_voters_indices.append(index)
+                if not len(active_voters_indices):
+                    converged()
+                    return
+            # elif response.frm is response.to:
+            #     # voter was satisfied
+            #     pass  # Dead case
+            else:
+                current_status.votes[response.frm] = current_status.votes[response.frm] - 1
+                current_status.votes[response.to] = current_status.votes[response.to] + 1
+                current_status.in_order()
+                print("<-- enhancement", end='\t')
+                active_voters_indices.remove(index)
+            # step++
+            step += 1
+            print()
+        else:
+            # no more voters in the list
+            converged()
+            return
+
+
+def converged():
+    print("Converged")
 
 
 def generate_voters(n_voters: int, voter_type, positions_range: int, utility):
