@@ -76,11 +76,12 @@ def main():
             profile = [voter.getprofile() for voter in all_voters]
             initial_status = Status.from_profile(profile)
 
-            run_simulation(all_candidates, all_voters, initial_status, tie_breaking_rule, rand)
+            for run in range(50):
+                scenario = run_simulation(all_candidates, all_voters, initial_status, tie_breaking_rule, rand)
 
 
 def run_simulation(all_candidates: list, all_voters: list, current_status: Status, tie_breaking_rule: TieBreakingRule,
-                   rand: Random) -> None:
+                   rand: Random) -> list:
     """
 
     :param tie_breaking_rule:
@@ -90,10 +91,12 @@ def run_simulation(all_candidates: list, all_voters: list, current_status: Statu
     :param rand:
     :type rand: Random
     """
+    scenario = []
     # only increase
     abstaining_voters_indices = []
     # now for the initial status
     print(current_status, "Initial state")
+    scenario.append(current_status.copy())
     step = 0
     max_steps = len(all_voters) * len(all_candidates)
     while step < max_steps:
@@ -115,6 +118,7 @@ def run_simulation(all_candidates: list, all_voters: list, current_status: Statu
             voter = all_voters[index]
             # ask him to vote
             response = voter.vote(current_status, tie_breaking_rule)
+            scenario.append(response)
             print(current_status, response, end='\t')
             # evaluate the status
             if response.to is None:
@@ -123,8 +127,8 @@ def run_simulation(all_candidates: list, all_voters: list, current_status: Statu
                 if isinstance(voter, LazyVoter):
                     abstaining_voters_indices.append(index)
                 if not len(active_voters_indices):
-                    converged()
-                    return
+                    converged(current_status, scenario)
+                    return scenario
             # elif response.frm is response.to:
             #     # voter was satisfied
             #     pass  # Dead case
@@ -134,16 +138,20 @@ def run_simulation(all_candidates: list, all_voters: list, current_status: Statu
                 current_status.in_order()
                 print("<-- enhancement", end='\t')
                 active_voters_indices.remove(index)
+                scenario.append(current_status.copy())
+                # return scenario
             step += 1
             print()
         else:
             # no more voters in the list
-            converged()
-            return
+            converged(current_status, scenario)
+            return scenario
 
 
-def converged():
+def converged(last_status: Status, scenario: list):
     print("Converged")
+    print(last_status, "Final state")
+    scenario.append(last_status.copy())
 
 
 def generate_voters(n_voters: int, voter_type, positions_range: int, utility: Utility, rand: Random):
