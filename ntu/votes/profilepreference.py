@@ -1,5 +1,6 @@
 import operator
 import random
+from random import Random
 
 from ntu.votes.candidate import Candidate
 from ntu.votes.voter import Voter
@@ -10,15 +11,15 @@ from ntu.votes.voter import Voter
 
 class ProfilePreference:
 
-    @staticmethod
-    def build_profile(voter: Voter, candidates: list) -> list:
+    @classmethod
+    def build_profile(cls, voter: Voter, candidates: list) -> list:
         raise NotImplementedError
 
 
 class SinglePeakedProfilePreference(ProfilePreference):
 
-    @staticmethod
-    def build_profile(voter: Voter, candidates: list) -> list:
+    @classmethod
+    def build_profile(cls, voter: Voter, candidates: list) -> list:
         distances = [(candidate.distance_to(voter.position), candidate) for candidate in candidates]
         # print(distances)
         '''TODO shall it be itemgetter(0,1) or itemgetter(0) only?
@@ -30,11 +31,16 @@ class SinglePeakedProfilePreference(ProfilePreference):
 
 
 class GeneralProfilePreference(ProfilePreference):
-    @staticmethod
-    def build_profile(voter: Voter, candidates: list) -> list:
-        """"TODO ensure reproducibility"""
+    rand = None
+
+    def __init__(self, rand: Random) -> None:
+        super().__init__()
+        self.__class__.rand = rand
+
+    @classmethod
+    def build_profile(cls, voter: Voter, candidates: list) -> list:
         temp = candidates.copy()
-        random.shuffle(temp)
+        cls.rand.shuffle(temp)
         return temp
 
 
@@ -56,7 +62,7 @@ if __name__ == '__main__':
     preference: ProfilePreference = SinglePeakedProfilePreference()
     print(preference.build_profile(Voter(2), cc))
 
-    preference = GeneralProfilePreference()
+    preference = GeneralProfilePreference(Random())
     print(preference.build_profile(Voter(2), cc))
     print(preference.build_profile(Voter(2), cc))
 

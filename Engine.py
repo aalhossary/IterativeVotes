@@ -91,7 +91,7 @@ def main():
     parser.add_argument("-t", "--tiebreakingrule", help="how to behave in cases of draws",
                         default='LexicographicTieBreakingRule')
     parser.add_argument("-s", "--seed", help="initial seed",
-                        default=None)  # TODO update
+                        default=None)
 
     args = parser.parse_args()
 
@@ -109,7 +109,7 @@ def main():
 
     preference = {
         'SinglePeakedProfilePreference': SinglePeakedProfilePreference(),
-        'GeneralProfilePreference': GeneralProfilePreference(),
+        'GeneralProfilePreference': GeneralProfilePreference(rand),
     }.get(args.preference, None)
 
     tie_breaking_rule = {
