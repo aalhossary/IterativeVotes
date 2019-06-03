@@ -18,6 +18,69 @@ __doc__ = """
 """
 
 
+class Measurements:
+    percentage_of_convergence: float
+    averageTimeToConvergence: float
+    averageSocial_welfare: float
+    # How many different stable states we have across all iteration sequences of the same preference profile
+    stable_states_sets: set
+    winning_sets: set
+    percentage_truthful_winner_wins: float
+    percentage_winner_is_weak: float
+
+    def __init__(self):
+        self.stable_states_sets = set()
+        self.winning_sets = set()
+        self.percentage_winner_is_weak = -1
+
+    def __str__(self):
+        return f"percentage_of_convergence = {self.percentage_of_convergence}\n" \
+            f"averageTimeToConvergence = {self.averageTimeToConvergence}\n" \
+            f"averageSocial_welfare = {self.averageSocial_welfare}\n" \
+            f"stable_states_sets: count = {len(self.stable_states_sets)}, repr = {self.stable_states_sets}\n" \
+            f"winning_sets: count = {len(self.winning_sets)}, repr = {self.winning_sets}\n" \
+            f"percentage_truthful_winner_wins = {self.percentage_truthful_winner_wins}%\n" \
+            f"percentage_winner_is_weak = {self.percentage_winner_is_weak}% [Not yet Implemented]"
+
+def aggregate_alleles(alleles, all_voters, utility: Utility, tiebreakingrule: TieBreakingRule) \
+        -> Measurements:
+    measurements = Measurements()
+    convergence_counter = welfare = truthful_winner_wins_counter = winner_is_weak_counter = 0.0
+    steps_before_convergence = []
+    for allele in alleles:
+        initial_state: Status = allele[0]
+        converged: bool = allele[-1]
+        final_status = allele[-2]
+        # lastAction: UpdateEvent = allele[-3] # not needed
+        if converged:
+            convergence_counter += 1
+            # initial state, final boolean, 2 entries each step
+            steps_before_convergence.append((len(allele) - 1 - 1 ) / 2)
+            # TODO I assume stable states means converged states. Please verify
+            measurements.stable_states_sets.add(tuple(final_status.winners))
+
+        for voter in all_voters:
+            welfare += utility.total_utility(voter.profile, final_status.winners, tiebreakingrule)
+        if isinstance(tiebreakingrule, RandomTieBreakingRule):
+            measurements.winning_sets.add(tuple(final_status.winners))
+        elif isinstance(tiebreakingrule, LexicographicTieBreakingRule):
+            measurements.winning_sets.add(tuple([tiebreakingrule.get_winner(final_status.winners)]))
+        else:
+            # TODO find a more approprite exception type
+            raise ValueError("Tie breaking rule not known")
+        if initial_state.winners == final_status.winners:
+            truthful_winner_wins_counter += 1
+        # TODO Weak winner
+        # if is_winner_weak():
+        #     winner_is_weak_counter += 1
+    measurements.percentage_of_convergence = convergence_counter * 100.0 / len(steps_before_convergence)
+    measurements.averageTimeToConvergence = sum(steps_before_convergence) / len(steps_before_convergence)
+    measurements.averageSocial_welfare = welfare / len(alleles)
+    measurements.percentage_truthful_winner_wins = truthful_winner_wins_counter * 100 / len(alleles)
+
+    return measurements
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("-c", "--candidates", help="number of candidates", default=5)
@@ -76,8 +139,14 @@ def main():
             profile = [voter.getprofile() for voter in all_voters]
             initial_status = Status.from_profile(profile)
 
+            alleles = []
             for run in range(50):
                 scenario = run_simulation(all_candidates, all_voters, initial_status, tie_breaking_rule, rand)
+                alleles.append(scenario)
+            measurements = aggregate_alleles(alleles, all_voters, utility, tie_breaking_rule)
+            print("-------measurements")
+            print(measurements)
+            print("-------")
 
 
 def run_simulation(all_candidates: list, all_voters: list, current_status: Status, tie_breaking_rule: TieBreakingRule,
@@ -119,6 +188,7 @@ def run_simulation(all_candidates: list, all_voters: list, current_status: Statu
             # ask him to vote
             response = voter.vote(current_status, tie_breaking_rule)
             scenario.append(response)
+
             print(current_status, response, end='\t')
             # evaluate the status
             if response.to is None:
@@ -127,8 +197,7 @@ def run_simulation(all_candidates: list, all_voters: list, current_status: Statu
                 if isinstance(voter, LazyVoter):
                     abstaining_voters_indices.append(index)
                 if not len(active_voters_indices):
-                    converged(current_status, scenario)
-                    return scenario
+                    return converged(current_status, scenario)
             # elif response.frm is response.to:
             #     # voter was satisfied
             #     pass  # Dead case
@@ -139,19 +208,28 @@ def run_simulation(all_candidates: list, all_voters: list, current_status: Statu
                 print("<-- enhancement", end='\t')
                 active_voters_indices.remove(index)
                 scenario.append(current_status.copy())
-                # return scenario
             step += 1
             print()
         else:
             # no more voters in the list
-            converged(current_status, scenario)
-            return scenario
+            return converged(current_status, scenario)
+    else:
+        return not_converged(current_status, scenario)
 
 
-def converged(last_status: Status, scenario: list):
+def converged(last_status: Status, scenario: list) -> list:
     print("Converged")
     print(last_status, "Final state")
     scenario.append(last_status.copy())
+    scenario.append(True)
+    return scenario
+
+
+def not_converged(last_status: Status, scenario: list) -> list:
+    print(last_status, "No convergence")
+    scenario.append(last_status.copy())
+    scenario.append(False)
+    return scenario
 
 
 def generate_voters(n_voters: int, voter_type, positions_range: int, utility: Utility, rand: Random):

@@ -174,7 +174,7 @@ class Voter:
 
             # Is there a (map / filter) way to do the next line?
             potential_updates = [update for update in potential_updates if update[0] == potential_updates[0][0]]
-            print(potential_updates)
+            # print(potential_updates)
             # enhance the selection process: select the nearest candidate to me among several alternatives
             "TODO was the previous line in the requirements?"
             if len(potential_updates) > 1:
@@ -218,10 +218,8 @@ class LazyVoter(Voter):
         update = super(LazyVoter, self).vote(current_state, tie_breaking_rule)
         if update.to is None:
             self.abstain = True
-            # TODO revise what should be returned (self, None, Candidate.NONE)
-            #  or (self, most_recent_vote, Candidate.NONE).
-            # update.to = Candidate.NONE
-            update = self.abstain_event
+            update.to = Candidate.NONE
+            # update = self.abstain_event
         return update
 
 
