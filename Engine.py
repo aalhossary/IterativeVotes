@@ -42,6 +42,7 @@ class Measurements:
             f"percentage_truthful_winner_wins = {self.percentage_truthful_winner_wins}%\n" \
             f"percentage_winner_is_weak = {self.percentage_winner_is_weak}% [Not yet Implemented]"
 
+
 def aggregate_alleles(alleles, all_voters, utility: Utility, tiebreakingrule: TieBreakingRule) \
         -> Measurements:
     measurements = Measurements()
@@ -55,8 +56,8 @@ def aggregate_alleles(alleles, all_voters, utility: Utility, tiebreakingrule: Ti
         if converged:
             convergence_counter += 1
             # initial state, final boolean, 2 entries each step
-            steps_before_convergence.append((len(allele) - 1 - 1 ) / 2)
-            # TODO I assume stable states means converged states. Please verify
+            steps_before_convergence.append((len(allele) - 1 - 1) / 2)
+            # A stable states is simply the state of a converged system.
             measurements.stable_states_sets.add(tuple(final_status.winners))
 
         for voter in all_voters:
@@ -70,7 +71,7 @@ def aggregate_alleles(alleles, all_voters, utility: Utility, tiebreakingrule: Ti
             raise ValueError("Tie breaking rule not known")
         if initial_state.winners == final_status.winners:
             truthful_winner_wins_counter += 1
-        # TODO Weak winner
+        # TODO Weak Condorset winner
         # if is_winner_weak():
         #     winner_is_weak_counter += 1
     measurements.percentage_of_convergence = convergence_counter * 100.0 / len(steps_before_convergence)
@@ -118,10 +119,16 @@ def main():
     }.get(args.tiebreakingrule, None)
 
     print(utility, preference, tie_breaking_rule)
+    percentage_of_convergence = []
+    averageTimeToConvergence = []
+    averageSocial_welfare = []
 
-    for n_candidates in range(5, 8):
-        # number of n_candidates <= n_voters <= 12 #TODO verify this with L & Z
-        for n_voters in range(n_candidates, 13):
+    n_candidates_range = range(5, 8)
+    n_voters_range = []
+    for n_candidates in n_candidates_range:
+        # number of n_candidates <= n_voters <= 12 #TODO parameterize vmin, vmax, cmin, cmax
+        n_voters_range = range(n_candidates, 13)
+        for n_voters in n_voters_range:
             if n_voters % 2 == 1:
                 continue
 
@@ -147,6 +154,13 @@ def main():
             print("-------measurements")
             print(measurements)
             print("-------")
+
+            percentage_of_convergence.append((n_candidates, n_voters, measurements.percentage_of_convergence))
+            averageTimeToConvergence.append((n_candidates, n_voters, measurements.averageTimeToConvergence))
+            averageSocial_welfare.append((n_candidates, n_voters, measurements.averageSocial_welfare))
+
+    # print(averageTimeToConvergence)
+    # print(list(zip(*averageTimeToConvergence)))
 
 
 def run_simulation(all_candidates: list, all_voters: list, current_status: Status, tie_breaking_rule: TieBreakingRule,
@@ -177,17 +191,20 @@ def run_simulation(all_candidates: list, all_voters: list, current_status: Statu
         else:
             # TODO double check this condition
             active_voters_indices = [i for i in active_voters_indices if tie_breaking_rule.winning_probability(
-                current_status.winners, all_voters[i].most_recent_vote) >= 1 / len(current_status.winners)]
+                current_status.winners, all_voters[i].most_recent_vote) < 1 / len(current_status.winners)]
         active_voters_indices = [i for i in active_voters_indices if i not in abstaining_voters_indices]
 
+        status_changed = False
         # Select one voter randomly from Current active_voters_indices list
-        while len(active_voters_indices) > 0 and step < max_steps:
+        while len(active_voters_indices) > 0 and step < max_steps:  # TODO is it right to check number of steps here?
+            status_changed = False
             # pick a voter from ACTIVE voters
             index = rand.choice(active_voters_indices)
             voter = all_voters[index]
             # ask him to vote
             response = voter.vote(current_status, tie_breaking_rule)
             scenario.append(response)
+            step += 1
 
             print(current_status, response, end='\t')
             # evaluate the status
@@ -196,23 +213,30 @@ def run_simulation(all_candidates: list, all_voters: list, current_status: Statu
                 active_voters_indices.remove(index)
                 if isinstance(voter, LazyVoter):
                     abstaining_voters_indices.append(index)
-                if not len(active_voters_indices):
+
+                if len(active_voters_indices):
+                    print()
+                else:
                     return converged(current_status, scenario)
             # elif response.frm is response.to:
-            #     # voter was satisfied
-            #     pass  # Dead case
+            #     # voter was satisfied (currently a dead case)
+            #     print()
             else:
+                print("<-- enhancement")
                 current_status.votes[response.frm] = current_status.votes[response.frm] - 1
                 current_status.votes[response.to] = current_status.votes[response.to] + 1
                 current_status.in_order()
-                print("<-- enhancement", end='\t')
-                active_voters_indices.remove(index)
+
                 scenario.append(current_status.copy())
-            step += 1
-            print()
+                status_changed = True
+                break
+
+        if status_changed:
+            # last step was successful
+            continue
         else:
-            # no more voters in the list
-            return converged(current_status, scenario)
+            # max steps exhausted
+            return not_converged(current_status, scenario)
     else:
         return not_converged(current_status, scenario)
 
