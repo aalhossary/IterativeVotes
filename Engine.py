@@ -1,5 +1,6 @@
 import argparse
 from random import Random
+import matplotlib.pyplot as plt
 import sys
 
 from ntu.votes import utility
@@ -126,7 +127,7 @@ def main():
     n_candidates_range = range(5, 8)
     n_voters_range = []
     for n_candidates in n_candidates_range:
-        # number of n_candidates <= n_voters <= 12 #TODO parameterize vmin, vmax, cmin, cmax
+        # number of n_candidates <= n_voters <= 12 #TODO parameterise vmin, vmax, cmin, cmax
         n_voters_range = range(n_candidates, 13)
         for n_voters in n_voters_range:
             if n_voters % 2 == 1:
@@ -161,6 +162,33 @@ def main():
 
     # print(averageTimeToConvergence)
     # print(list(zip(*averageTimeToConvergence)))
+    plot_it(averageTimeToConvergence, 'averageTimeToConvergence', n_candidates_range, n_voters_range)
+
+
+def plot_it(passed_in_array, label: str, n_candidates_range, n_voters_range):
+    for n_candidates in n_candidates_range:
+        new_list = [(v, y) for (c, v, y) in passed_in_array if c == n_candidates]
+        print("for candidates = ", n_candidates)
+        print(new_list)
+        separate_x_y = list(zip(*new_list))
+        print("separate: ", separate_x_y)
+        if separate_x_y:
+            plt.plot(separate_x_y[0], separate_x_y[1], 'o-')
+            plt.title(label + f'candidates = {n_candidates}')
+            plt.xlabel('Voters')
+            plt.show()
+
+    for n_voters in n_voters_range:
+        new_list = [(c, y) for (c, v, y) in passed_in_array if v == n_voters]
+        print("for voters = ", n_voters)
+        print(new_list)
+        separate_x_y = list(zip(*new_list))
+        print("separate: ", separate_x_y)
+        if separate_x_y:
+            plt.plot(separate_x_y[0], separate_x_y[1], '^-')
+            plt.title(label + f'voters = {n_voters}')
+            plt.xlabel('Candidates')
+            plt.show()
 
 
 def run_simulation(all_candidates: list, all_voters: list, current_status: Status, tie_breaking_rule: TieBreakingRule,
@@ -196,7 +224,7 @@ def run_simulation(all_candidates: list, all_voters: list, current_status: Statu
 
         status_changed = False
         # Select one voter randomly from Current active_voters_indices list
-        while len(active_voters_indices) > 0 and step < max_steps:  # TODO is it right to check number of steps here?
+        while len(active_voters_indices) > 0 and step < max_steps:  # Note that we check number of steps as well
             status_changed = False
             # pick a voter from ACTIVE voters
             index = rand.choice(active_voters_indices)
