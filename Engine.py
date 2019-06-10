@@ -1,4 +1,5 @@
 import argparse
+import itertools
 from random import Random
 import matplotlib.pyplot as plt
 import sys
@@ -66,10 +67,9 @@ def aggregate_alleles(alleles, all_voters, utility: Utility, tiebreakingrule: Ti
         if isinstance(tiebreakingrule, RandomTieBreakingRule):
             measurements.winning_sets.add(tuple(final_status.winners))
         elif isinstance(tiebreakingrule, LexicographicTieBreakingRule):
-            measurements.winning_sets.add(tuple([tiebreakingrule.get_winner(final_status.winners)]))
+            measurements.winning_sets.add((tiebreakingrule.get_winner(final_status.winners), ))
         else:
-            # TODO find a more approprite exception type
-            raise ValueError("Tie breaking rule not known")
+            raise TypeError("Tie breaking rule not known")
         if initial_state.winners == final_status.winners:
             truthful_winner_wins_counter += 1
         # TODO Weak Condorset winner
@@ -121,13 +121,13 @@ def main():
 
     print(utility, preference, tie_breaking_rule)
     percentage_of_convergence = []
-    averageTimeToConvergence = []
-    averageSocial_welfare = []
+    average_time_to_convergence = []
+    average_social_welfare = []
 
     n_candidates_range = range(5, 8)
     n_voters_range = []
     for n_candidates in n_candidates_range:
-        # number of n_candidates <= n_voters <= 12 #TODO parameterise vmin, vmax, cmin, cmax
+        # number of n_candidates <= n_voters <= 12 #TODO parametrize vmin, vmax, cmin, cmax
         n_voters_range = range(n_candidates, 13)
         for n_voters in n_voters_range:
             if n_voters % 2 == 1:
@@ -157,38 +157,12 @@ def main():
             print("-------")
 
             percentage_of_convergence.append((n_candidates, n_voters, measurements.percentage_of_convergence))
-            averageTimeToConvergence.append((n_candidates, n_voters, measurements.averageTimeToConvergence))
-            averageSocial_welfare.append((n_candidates, n_voters, measurements.averageSocial_welfare))
+            average_time_to_convergence.append((n_candidates, n_voters, measurements.averageTimeToConvergence))
+            average_social_welfare.append((n_candidates, n_voters, measurements.averageSocial_welfare))
 
-    # print(averageTimeToConvergence)
-    # print(list(zip(*averageTimeToConvergence)))
-    plot_it(averageTimeToConvergence, 'averageTimeToConvergence', n_candidates_range, n_voters_range)
-
-
-def plot_it(passed_in_array, label: str, n_candidates_range, n_voters_range):
-    for n_candidates in n_candidates_range:
-        new_list = [(v, y) for (c, v, y) in passed_in_array if c == n_candidates]
-        print("for candidates = ", n_candidates)
-        print(new_list)
-        separate_x_y = list(zip(*new_list))
-        print("separate: ", separate_x_y)
-        if separate_x_y:
-            plt.plot(separate_x_y[0], separate_x_y[1], 'o-')
-            plt.title(label + f'candidates = {n_candidates}')
-            plt.xlabel('Voters')
-            plt.show()
-
-    for n_voters in n_voters_range:
-        new_list = [(c, y) for (c, v, y) in passed_in_array if v == n_voters]
-        print("for voters = ", n_voters)
-        print(new_list)
-        separate_x_y = list(zip(*new_list))
-        print("separate: ", separate_x_y)
-        if separate_x_y:
-            plt.plot(separate_x_y[0], separate_x_y[1], '^-')
-            plt.title(label + f'voters = {n_voters}')
-            plt.xlabel('Candidates')
-            plt.show()
+    # print(average_time_to_convergence)
+    # print(list(zip(*average_time_to_convergence)))
+    plot_it(average_time_to_convergence, 'average time to convergence', n_candidates_range, n_voters_range)
 
 
 def run_simulation(all_candidates: list, all_voters: list, current_status: Status, tie_breaking_rule: TieBreakingRule,
@@ -212,17 +186,21 @@ def run_simulation(all_candidates: list, all_voters: list, current_status: Statu
     max_steps = len(all_voters) * len(all_candidates)
     while step < max_steps:
         # recalculated every step, always decrease
-        active_voters_indices = [i for i in range(len(all_voters))]
-        if len(current_status.winners) < 2:
-            active_voters_indices = [i for i in active_voters_indices
-                                     if all_voters[i].most_recent_vote is not current_status.winners[0]]
+        active_voters_indices = list(itertools.filterfalse(lambda i: i in abstaining_voters_indices,
+                                                           range(len(all_voters))))
+        n_winners = len(current_status.winners)
+        if n_winners < 2:
+            active_voters_indices = list(
+                itertools.filterfalse(lambda i: all_voters[i].most_recent_vote is current_status.winners[0],
+                                      active_voters_indices))
         else:
-            # TODO double check this condition
-            active_voters_indices = [i for i in active_voters_indices if tie_breaking_rule.winning_probability(
-                current_status.winners, all_voters[i].most_recent_vote) < 1 / len(current_status.winners)]
-        active_voters_indices = [i for i in active_voters_indices if i not in abstaining_voters_indices]
+            # This condition needs to be double checked for all corner cases
+            active_voters_indices = list(
+                filter(lambda i: tie_breaking_rule.winning_probability(
+                    current_status.winners, all_voters[i].most_recent_vote) < (1 / n_winners),
+                       active_voters_indices))
 
-        status_changed = False
+        status_changed = bool
         # Select one voter randomly from Current active_voters_indices list
         while len(active_voters_indices) > 0 and step < max_steps:  # Note that we check number of steps as well
             status_changed = False
@@ -267,6 +245,34 @@ def run_simulation(all_candidates: list, all_voters: list, current_status: Statu
             return not_converged(current_status, scenario)
     else:
         return not_converged(current_status, scenario)
+
+
+def plot_it(passed_in_array, label: str, n_candidates_range, n_voters_range):
+    for n_candidates in n_candidates_range:
+        new_list = [(v, y) for (c, v, y) in passed_in_array if c == n_candidates]
+        print("for candidates = ", n_candidates)
+        print(new_list)
+        separate_x_y = list(zip(*new_list))
+        print("separate: ", separate_x_y)
+        if separate_x_y:
+            plt.plot(separate_x_y[0], separate_x_y[1], 'o-', label= f'candidates = {n_candidates}')
+    plt.title(label)
+    plt.legend()
+    plt.xlabel('Voters')
+    plt.show()
+
+    for n_voters in n_voters_range:
+        new_list = [(c, y) for (c, v, y) in passed_in_array if v == n_voters]
+        print("for voters = ", n_voters)
+        print(new_list)
+        separate_x_y = list(zip(*new_list))
+        print("separate: ", separate_x_y)
+        if separate_x_y:
+            plt.plot(separate_x_y[0], separate_x_y[1], '^-', label=f'voters = {n_voters}')
+    plt.title(label)
+    plt.legend()
+    plt.xlabel('Candidates')
+    plt.show()
 
 
 def converged(last_status: Status, scenario: list) -> list:

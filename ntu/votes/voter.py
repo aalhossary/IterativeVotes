@@ -172,8 +172,8 @@ class Voter:
         else:
             potential_updates.sort(key=operator.itemgetter(0), reverse=True)
 
-            # Is there a (map / filter) way to do the next line?
-            potential_updates = [update for update in potential_updates if update[0] == potential_updates[0][0]]
+            # potential_updates = [update for update in potential_updates if update[0] == potential_updates[0][0]]
+            potential_updates = list(filter(lambda update: update[0] == potential_updates[0][0], potential_updates))
             # print(potential_updates)
             # enhance the selection process: select the nearest candidate to me among several alternatives
             "TODO was the previous line in the requirements?"
