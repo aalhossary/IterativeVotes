@@ -74,9 +74,9 @@ class Status:
 
 
 class VoterTypes(Enum):
-    GeneralVoter = auto()
-    TruthfulVoter = auto()
-    LazyVoter = auto()
+    general = auto()
+    truthful = auto()
+    lazy = auto()
 
 
 class Voter:
@@ -102,9 +102,9 @@ class Voter:
     @classmethod
     def make_voter(cls, voter_type: str, position: int, utility: Utility = BordaUtility) -> 'Voter':
         new = {
-            VoterTypes.GeneralVoter.name: cls.__new__(GeneralVoter),
-            VoterTypes.TruthfulVoter.name: cls.__new__(TruthfulVoter),
-            VoterTypes.LazyVoter.name: cls.__new__(LazyVoter),
+            VoterTypes.general.name: cls.__new__(GeneralVoter),
+            VoterTypes.truthful.name: cls.__new__(TruthfulVoter),
+            VoterTypes.lazy.name: cls.__new__(LazyVoter),
         }.get(voter_type, None)
         cls.__init__(new, position, utility)
         return new

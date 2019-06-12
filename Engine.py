@@ -4,6 +4,7 @@ from random import Random
 import matplotlib.pyplot as plt
 import sys
 
+from docopt import docopt
 from ntu.votes import utility
 from ntu.votes.candidate import *
 from ntu.votes.profilepreference import *
@@ -13,6 +14,7 @@ from ntu.votes.voter import *
 
 # =======================
 __doc__ = """
+
 •	Number of voters is even and <= 12
 •	Number of candidates between 5 and 7
 •	Number of repeated runs per preference profile is 50 (random iteration sequences per profile)
@@ -84,60 +86,84 @@ def aggregate_alleles(alleles, all_voters, utility: Utility, tiebreakingrule: Ti
 
 
 def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("-c", "--candidates", help="number of candidates", default=5)
-    parser.add_argument("-v", "--voters", help="type of voters", default='GeneralVoter')
-    parser.add_argument("-u", "--utility", help="The utility Function", default= 'BordaUtility')
-    parser.add_argument("-p", "--preference", help="ow a voter forms his ballot order",
-                        default='SinglePeakedProfilePreference')
-    parser.add_argument("-t", "--tiebreakingrule", help="how to behave in cases of draws",
-                        default='LexicographicTieBreakingRule')
-    parser.add_argument("-s", "--seed", help="initial seed",
-                        default=None)
+    __doc__ = '''Iterative voting engine
 
-    args = parser.parse_args()
+Usage:
+  Engine.py [options]
+  Engine.py [options] [--utility borda]
+  Engine.py [options] [--utility expo [<BASE> [<EXPO_STEP>]]]
 
-    rand = random.Random(args.seed)
+
+Options:
+  -c, --cmin=CMIN   Min number of candidates    [Default: 5]
+  -C, --cmax=CMAX   Max number of candidates    [Default: 7]
+  -v, --vmin=VMIN   Min number of Voters        [Default: cmin]
+  -V, --vmax=VMAX   Max number of Voters        [Default: 12]
+  -u, --utility=UTILITY         User Utility function (borda | expo) [Default: borda]
+  -p, --preference=PREFERENCE   How a voter forms his ballot 
+                                order (single-peaked | general) [Default: single-peaked]
+  -t, --tiebreakingrule=TIEBREAKINGRULE     How to behave in cases of draws 
+                                (lexicographic | random) [Default: lexicographic]
+  --voters=VOTERS       Type of voters (general | truthful | lazy) [Default: general]
+  -s, --seed=SEED       Randomization seed     [Default: 12345]
+  -h, --help            Print the help screen
+  --version             Prints the version and exits
+  BASE                  The base               [default: 2]
+  EXPO_STEP             The exponent increment [Default: 1]
+
+
+'''
+
+    args = docopt(__doc__, version='0.1.0')
+    print(args)
+
+    rand = random.Random(args['--seed'])
 
     # if args.candidates:
     #     print("candidates = ", args.candidates)
     # if args.voters:
     #     print("voters = ", args.voters)
+
     utility = {
-        'BordaUtility': BordaUtility(),
-        'ExpoUtility': ExpoUtility(),
-    }.get(args.utility, None)
-    # TODO use ExpoUtility parameters if any
+        'borda': BordaUtility(),
+        'expo': ExpoUtility(base=args.get('<BASE>', 2),
+                            exponent_step=args.get('<EXPO_STEP>', 1)),
+    }.get(args['--utility'], None)
 
     preference = {
-        'SinglePeakedProfilePreference': SinglePeakedProfilePreference(),
-        'GeneralProfilePreference': GeneralProfilePreference(rand),
-    }.get(args.preference, None)
+        'single-peaked': SinglePeakedProfilePreference(),
+        'general': GeneralProfilePreference(rand),
+    }.get(args['--preference'], None)
 
     tie_breaking_rule = {
-        'LexicographicTieBreakingRule': LexicographicTieBreakingRule(),
-        'RandomTieBreakingRule': RandomTieBreakingRule(rand),
-    }.get(args.tiebreakingrule, None)
+        'lexicographic': LexicographicTieBreakingRule(),
+        'random': RandomTieBreakingRule(rand),
+    }.get(args['--tiebreakingrule'], None)
 
     print(utility, preference, tie_breaking_rule)
     percentage_of_convergence = []
     average_time_to_convergence = []
     average_social_welfare = []
 
-    n_candidates_range = range(5, 8)
+    cmin = int(args['--cmin'])
+    cmax = int(args['--cmax'])
+    vmin = int(args['--cmin'])
+    vmin = cmin if vmin == 'cmin' else int(vmin)
+    vmax = int(args['--vmax'])
+
+    n_candidates_range = range(cmin, cmax + 1)
     n_voters_range = []
     for n_candidates in n_candidates_range:
-        # number of n_candidates <= n_voters <= 12 #TODO parametrize vmin, vmax, cmin, cmax
-        n_voters_range = range(n_candidates, 13)
+        # number of n_candidates <= n_voters <= 12
+        n_voters_range = range(max(vmin, n_candidates), vmax + 1)
         for n_voters in n_voters_range:
-            if n_voters % 2 == 1:
+            if n_voters % 2:
                 continue
 
-            # for voter_types in ['GeneralVoter', ]
             print(f"\n------------ voters = {n_voters}, Candidates = {n_candidates}-------------------")
             all_candidates = generate_candidates(n_candidates, rand)
             # print(all_candidates)
-            all_voters = generate_voters(n_voters, args.voters, n_candidates, utility, rand)
+            all_voters = generate_voters(n_voters, args['--voters'], n_candidates, utility, rand)
             # print(all_voters)
 
             # voters build their preferences
@@ -212,7 +238,7 @@ def run_simulation(all_candidates: list, all_voters: list, current_status: Statu
             scenario.append(response)
             step += 1
 
-            print(current_status, response, end='\t')
+            print(current_status, f'{index:#2}', response, end='\t')
             # evaluate the status
             if response.to is None:
                 # couldn't enhance
