@@ -30,12 +30,12 @@ class Measurements:
     stable_states_sets: set
     winning_sets: set
     percentage_truthful_winner_wins: float
-    percentage_winner_is_weak: float
+    percentage_winner_is_weak_condorcet: float
+    percentage_winner_is_strong_condorcet: float
 
     def __init__(self):
         self.stable_states_sets = set()
         self.winning_sets = set()
-        self.percentage_winner_is_weak = -1
 
     def __str__(self):
         return f"percentage_of_convergence = {self.percentage_of_convergence}\n" \
@@ -44,45 +44,89 @@ class Measurements:
             f"stable_states_sets: count = {len(self.stable_states_sets)}, repr = {self.stable_states_sets}\n" \
             f"winning_sets: count = {len(self.winning_sets)}, repr = {self.winning_sets}\n" \
             f"percentage_truthful_winner_wins = {self.percentage_truthful_winner_wins}%\n" \
-            f"percentage_winner_is_weak = {self.percentage_winner_is_weak}% [Not yet Implemented]"
+            f"percentage_winner_is_weak_condorcet = {self.percentage_winner_is_weak_condorcet}%\n" \
+            f"percentage_winner_is_strong_condorcet = {self.percentage_winner_is_strong_condorcet}%\n"
 
 
-def aggregate_alleles(alleles, all_voters, utility: Utility, tiebreakingrule: TieBreakingRule) \
-        -> Measurements:
+def aggregate_alleles(alleles, all_voters, profile, utility: Utility, tiebreakingrule: TieBreakingRule) -> Measurements:
     measurements = Measurements()
-    convergence_counter = welfare = truthful_winner_wins_counter = winner_is_weak_counter = 0.0
+    convergence_counter = welfare = truthful_winner_wins_counter = winner_is_weak_condorcet_counter = \
+        winner_is_strong_condorcet_counter = 0.0
     steps_before_convergence = []
     for allele in alleles:
         initial_state: Status = allele[0]
         converged: bool = allele[-1]
         final_status = allele[-2]
         # lastAction: UpdateEvent = allele[-3] # not needed
+        final_status_toppers = final_status.toppers
+
+        if isinstance(tiebreakingrule, RandomTieBreakingRule):
+            initial_winner_s = frozenset(initial_state.toppers)
+            final_winner_s = frozenset(final_status_toppers)
+        elif isinstance(tiebreakingrule, LexicographicTieBreakingRule):
+            initial_winner_s = frozenset([tiebreakingrule.get_winner(initial_state.toppers)])
+            final_winner_s = frozenset([tiebreakingrule.get_winner(final_status_toppers)])
+        else:
+            raise TypeError("Tie breaking rule not known")
+
+        measurements.winning_sets.add(final_winner_s)
+
+        if initial_winner_s == final_winner_s:
+            truthful_winner_wins_counter += 1
+
         if converged:
             convergence_counter += 1
             # initial state, final boolean, 2 entries each step
             steps_before_convergence.append((len(allele) - 1 - 1) / 2)
             # A stable states is simply the state of a converged system.
-            measurements.stable_states_sets.add(tuple(final_status.winners))
+            measurements.stable_states_sets.add(final_winner_s)
 
         for voter in all_voters:
-            welfare += utility.total_utility(voter.profile, final_status.winners, tiebreakingrule)
-        if isinstance(tiebreakingrule, RandomTieBreakingRule):
-            measurements.winning_sets.add(tuple(final_status.winners))
-        elif isinstance(tiebreakingrule, LexicographicTieBreakingRule):
-            measurements.winning_sets.add((tiebreakingrule.get_winner(final_status.winners), ))
-        else:
-            raise TypeError("Tie breaking rule not known")
-        if initial_state.winners == final_status.winners:
-            truthful_winner_wins_counter += 1
-        # TODO Weak Condorset winner
-        # if is_winner_weak():
-        #     winner_is_weak_counter += 1
+            welfare += utility.total_utility(voter.profile, final_status_toppers, tiebreakingrule)
+
+        # if not is_condorset_winner(profile, final_status.toppers[0]):
+        #     others = profile[0].copy()
+        #     others.remove(final_status.toppers[0])
+        #     for other in others:
+        #         if is_condorset_winner(profile, other):
+        #             print("found", other, repr(profile))
+
+        # TODO What to do with Condorcet if there is a tie
+        if is_condorset_winner(profile, final_status_toppers[0], week=True):
+            winner_is_weak_condorcet_counter += 1
+            if is_condorset_winner(profile, final_status_toppers[0], week=False):
+                winner_is_strong_condorcet_counter += 1
     measurements.percentage_of_convergence = convergence_counter * 100.0 / len(steps_before_convergence)
     measurements.averageTimeToConvergence = sum(steps_before_convergence) / len(steps_before_convergence)
     measurements.averageSocial_welfare = welfare / len(alleles)
     measurements.percentage_truthful_winner_wins = truthful_winner_wins_counter * 100 / len(alleles)
+    measurements.percentage_winner_is_weak_condorcet = winner_is_weak_condorcet_counter * 100 / len(alleles)
+    measurements.percentage_winner_is_strong_condorcet = winner_is_strong_condorcet_counter * 100 / len(alleles)
 
     return measurements
+
+
+def is_condorset_winner(profile: list, query: Candidate, week=True) -> bool:
+    result = dict()
+    strong_only = not week
+    others = profile[0].copy()
+    others.remove(query)
+    for other in others:
+        result.clear()
+        for voter_profile in profile:
+            for candidate in voter_profile:
+                # They are ordered according to preference. Who appears first is the voter's winner
+                if candidate is query:
+                    result[query] = result.get(query, 0) + 1
+                    break
+                elif candidate is other:
+                    result[other] = result.get(other, 0) + 1
+                    break
+        if result[query] < result[other]:
+            return False
+        elif strong_only and result[query] == result[other]:
+            return False
+    return True
 
 
 def main():
@@ -144,6 +188,7 @@ Options:
     percentage_of_convergence = []
     average_time_to_convergence = []
     average_social_welfare = []
+    num_stable_states_sets = []
 
     cmin = int(args['--cmin'])
     cmax = int(args['--cmax'])
@@ -177,18 +222,22 @@ Options:
             for run in range(50):
                 scenario = run_simulation(all_candidates, all_voters, initial_status, tie_breaking_rule, rand)
                 alleles.append(scenario)
-            measurements = aggregate_alleles(alleles, all_voters, utility, tie_breaking_rule)
+            measurements = aggregate_alleles(alleles, all_voters, profile, utility, tie_breaking_rule)
             print("-------measurements")
             print(measurements)
             print("-------")
 
-            percentage_of_convergence.append((n_candidates, n_voters, measurements.percentage_of_convergence))
             average_time_to_convergence.append((n_candidates, n_voters, measurements.averageTimeToConvergence))
             average_social_welfare.append((n_candidates, n_voters, measurements.averageSocial_welfare))
+            percentage_of_convergence.append((n_candidates, n_voters, measurements.percentage_of_convergence))
+            num_stable_states_sets.append((n_candidates, n_voters, len(measurements.stable_states_sets)))
 
     # print(average_time_to_convergence)
     # print(list(zip(*average_time_to_convergence)))
     plot_it(average_time_to_convergence, 'average time to convergence', n_candidates_range, n_voters_range)
+    plot_it(average_social_welfare, 'average social welfare', n_candidates_range, n_voters_range)
+    plot_it(percentage_of_convergence, 'average time to convergence', n_candidates_range, n_voters_range)
+    plot_it(num_stable_states_sets, 'num stable states', n_candidates_range, n_voters_range)
 
 
 def run_simulation(all_candidates: list, all_voters: list, current_status: Status, tie_breaking_rule: TieBreakingRule,
@@ -214,16 +263,16 @@ def run_simulation(all_candidates: list, all_voters: list, current_status: Statu
         # recalculated every step, always decrease
         active_voters_indices = list(itertools.filterfalse(lambda i: i in abstaining_voters_indices,
                                                            range(len(all_voters))))
-        n_winners = len(current_status.winners)
-        if n_winners < 2:
+        n_toppers = len(current_status.toppers)
+        if n_toppers < 2:
             active_voters_indices = list(
-                itertools.filterfalse(lambda i: all_voters[i].most_recent_vote is current_status.winners[0],
+                itertools.filterfalse(lambda i: all_voters[i].most_recent_vote is current_status.toppers[0],
                                       active_voters_indices))
         else:
             # This condition needs to be double checked for all corner cases
             active_voters_indices = list(
                 filter(lambda i: tie_breaking_rule.winning_probability(
-                    current_status.winners, all_voters[i].most_recent_vote) < (1 / n_winners),
+                    current_status.toppers, all_voters[i].most_recent_vote) < (1 / n_toppers),
                        active_voters_indices))
 
         status_changed = bool

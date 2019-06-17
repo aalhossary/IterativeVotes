@@ -25,26 +25,26 @@ class UpdateEvent:
 
 
 class Status:
-    votes: dict = None
-    winners: list = None
+    votes: dict = None  # contains only the candidates which have at least one vote
+    toppers: list = None
     runner_ups: list = None
 
     @classmethod
     def from_profile(cls, profile: list) -> 'Status':
         votes = [user_profile[0] for user_profile in profile]
-        return cls.from_votes(votes)
+        return cls.from_votes(votes, profile[0])
 
     @classmethod
-    def from_votes(cls, votes: list) -> 'Status':
+    def from_votes(cls, votes: list, all_candidates: list) -> 'Status':
         new = cls.__new__(Status)
-        new.votes = {}
-        for candidate in votes:
-            new.votes[candidate] = new.votes.get(candidate, 0) + 1
+        new.votes = {candidate: 0 for candidate in all_candidates}  # This 'votes' is a dictionary
+        for candidate in votes:  # This 'votes' is a list.
+            new.votes[candidate] = new.votes[candidate] + 1
         new.in_order()
         return new
 
     def in_order(self) -> list:
-        """Return the votes as a list of frequencies, and cache the top two groups (winners and runner ups)."""
+        """Return the votes as a list of frequencies, and cache the top two groups (toppers and runner ups)."""
         lst = list(self.votes.items())
         """If using Python 3.7, dictionary order is guaranteed to be preserved"""
         lst.sort(key=operator.itemgetter(1), reverse=True)
@@ -53,7 +53,7 @@ class Status:
 
     def __cache_top_candidates(self, ordered: list):
         top_score = ordered[0][1]
-        self.winners = [candidate for (candidate, freq) in ordered if freq == top_score]
+        self.toppers = [candidate for (candidate, freq) in ordered if freq == top_score]
         self.runner_ups = [candidate for (candidate, freq) in ordered if freq == top_score - 1]
         # to make it probably faster later, provided that we are using Python 3.7+ or cpython 3.6
         self.votes = dict(ordered)
@@ -62,8 +62,8 @@ class Status:
         new = self.__class__.__new__(Status)
         if self.votes:
             new.votes = self.votes.copy()
-        if self.winners:
-            new.winners = self.winners.copy()
+        if self.toppers:
+            new.toppers = self.toppers.copy()
         if self.runner_ups:
             new.runner_ups = self.runner_ups.copy()
         return new
@@ -131,7 +131,7 @@ class Voter:
         """
         utility = self.utility
         frm = self.most_recent_vote
-        winners = current_status.winners
+        winners = current_status.toppers
         runner_ups = current_status.runner_ups
 
         'The only case I am fully satisfied'
@@ -145,7 +145,7 @@ class Voter:
         current_utility = utility.total_utility(self.profile, winners, tie_breaking_rule)
         proposed_status = current_status.copy()
         potential_updates = []
-        # for candidate in winners:
+        # for candidate in toppers:
         combined_list = list(winners)
         combined_list.extend(runner_ups)
         for candidate in combined_list:
@@ -157,7 +157,7 @@ class Voter:
             proposed_status.votes[candidate] = proposed_status.votes[candidate] + 1
             proposed_status.in_order()
 
-            potential_utility = utility.total_utility(self.profile, proposed_status.winners, tie_breaking_rule)
+            potential_utility = utility.total_utility(self.profile, proposed_status.toppers, tie_breaking_rule)
             if potential_utility > current_utility:
                 # potential_updates.append((potential_utility, candidate))
                 potential_updates.append((potential_utility, candidate, current_utility))
@@ -250,5 +250,5 @@ if __name__ == '__main__':
         ])
     orderedCandidates = status.in_order()
     print(orderedCandidates)
-    print(status.winners)
+    print(status.toppers)
     print(status.runner_ups)
