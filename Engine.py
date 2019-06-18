@@ -91,11 +91,18 @@ def aggregate_alleles(alleles, all_voters, profile, utility: Utility, tiebreakin
         #         if is_condorset_winner(profile, other):
         #             print("found", other, repr(profile))
 
-        # TODO What to do with Condorcet if there is a tie
-        if is_condorset_winner(profile, final_status_toppers[0], week=True):
+        for winner in final_winner_s:
+            if not is_condorset_winner(profile, winner, week=True):
+                break
+        else:  # else of the (for loop), not of the (if statement)
             winner_is_weak_condorcet_counter += 1
-            if is_condorset_winner(profile, final_status_toppers[0], week=False):
+            # test again for strong condorcet winner
+            for winner in final_winner_s:
+                if not is_condorset_winner(profile, final_status_toppers[0], week=False):
+                    break
+            else:
                 winner_is_strong_condorcet_counter += 1
+
     measurements.percentage_of_convergence = convergence_counter * 100.0 / len(steps_before_convergence)
     measurements.averageTimeToConvergence = sum(steps_before_convergence) / len(steps_before_convergence)
     measurements.averageSocial_welfare = welfare / len(alleles)
