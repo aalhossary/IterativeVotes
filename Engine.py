@@ -23,6 +23,7 @@ __doc__ = """
 
 
 class Measurements:
+    """Holds the complete set of measures of (50?) runs of a single profile."""
     percentage_of_convergence: float
     averageTimeToConvergence: float
     averageSocial_welfare: float
@@ -98,7 +99,7 @@ def aggregate_alleles(alleles, all_voters, profile, utility: Utility, tiebreakin
             winner_is_weak_condorcet_counter += 1
             # test again for strong condorcet winner
             for winner in final_winner_s:
-                if not is_condorset_winner(profile, final_status_toppers[0], week=False):
+                if not is_condorset_winner(profile, winner, week=False):
                     break
             else:
                 winner_is_strong_condorcet_counter += 1
@@ -215,7 +216,7 @@ Options:
             print(f"\n------------ voters = {n_voters}, Candidates = {n_candidates}-------------------")
             all_candidates = generate_candidates(n_candidates, rand)
             # print(all_candidates)
-            all_voters = generate_voters(n_voters, args['--voters'], n_candidates, utility, rand)
+            all_voters = generate_voters(n_voters, args['--voters'], utility, rand)
             # print(all_voters)
 
             # voters build their preferences
@@ -337,7 +338,7 @@ def plot_it(passed_in_array, label: str, n_candidates_range, n_voters_range):
         separate_x_y = list(zip(*new_list))
         print("separate: ", separate_x_y)
         if separate_x_y:
-            plt.plot(separate_x_y[0], separate_x_y[1], 'o-', label= f'candidates = {n_candidates}')
+            plt.plot(separate_x_y[0], separate_x_y[1], 'o-', label=f'candidates = {n_candidates}')
     plt.title(label)
     plt.legend()
     plt.xlabel('Voters')
@@ -372,7 +373,7 @@ def not_converged(last_status: Status, scenario: list) -> list:
     return scenario
 
 
-def generate_voters(n_voters: int, voter_type, positions_range: int, utility: Utility, rand: Random):
+def generate_voters(n_voters: int, voter_type: str, utility: Utility, rand: Random):
     all_voters = []
     for i in range(n_voters):
         # v: Voter = Voter.make_voter(voter_type, rand.randrange(positions_range), utility)
@@ -393,4 +394,3 @@ def generate_candidates(n_candidates: int, rand: Random):
 # --------------------------
 if __name__ == '__main__':
     main()
-
