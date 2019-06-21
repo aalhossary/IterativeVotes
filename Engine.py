@@ -23,7 +23,10 @@ __doc__ = """
 
 
 class Measurements:
-    """Holds the complete set of measures of (50?) runs of a single profile."""
+    """Holds the complete set of measures of (50?) alleles: same voters, same candidates, same profile, different
+    random scenarios."""
+    n_voters: int
+    n_candidates: int
     percentage_of_convergence: float
     averageTimeToConvergence: float
     averageSocial_welfare: float
@@ -49,8 +52,10 @@ class Measurements:
             f"percentage_winner_is_strong_condorcet = {self.percentage_winner_is_strong_condorcet}%\n"
 
 
-def aggregate_alleles(alleles, all_voters, profile, utility: Utility, tiebreakingrule: TieBreakingRule) -> Measurements:
+def aggregate_alleles(alleles: list, all_voters: list, profile: list, utility: Utility, tiebreakingrule: TieBreakingRule) -> Measurements:
     measurements = Measurements()
+    measurements.n_voters = len(profile)  # len(all_voters) is also OK
+    measurements.n_candidates = len(profile[0])
     convergence_counter = welfare = truthful_winner_wins_counter = winner_is_weak_condorcet_counter = \
         winner_is_strong_condorcet_counter = 0.0
     steps_before_convergence = []
@@ -121,14 +126,16 @@ def is_condorset_winner(profile: list, query: Candidate, week=True) -> bool:
     others.remove(query)
     for other in others:
         result.clear()
+        result[query] = 0
+        result[other] = 0
         for voter_profile in profile:
             for candidate in voter_profile:
                 # They are ordered according to preference. Who appears first is the voter's winner
-                if candidate is query:
-                    result[query] = result.get(query, 0) + 1
+                if candidate == query:
+                    result[query] = result[query] + 1
                     break
-                elif candidate is other:
-                    result[other] = result.get(other, 0) + 1
+                elif candidate == other:
+                    result[other] = result[other] + 1
                     break
         if result[query] < result[other]:
             return False
@@ -151,12 +158,14 @@ Options:
   -C, --cmax=CMAX   Max number of candidates    [Default: 7]
   -v, --vmin=VMIN   Min number of Voters        [Default: cmin]
   -V, --vmax=VMAX   Max number of Voters        [Default: 12]
-  -u, --utility=UTILITY         User Utility function (borda | expo) [Default: borda]
+  -l, --log=LFILE   Log file (if ommitted or -, output to stdout)   [Default -]
+  -o, --out-folder=OFOLDER      Output folder where all scenarios are written [Default ./out]
+  -u, --utility=UTILITY         User Utility function (borda | expo)[Default: borda]
   -p, --preference=PREFERENCE   How a voter forms his ballot 
-                                order (single-peaked | general) [Default: single-peaked]
+                                order (single-peaked | general)     [Default: single-peaked]
   -t, --tiebreakingrule=TIEBREAKINGRULE     How to behave in cases of draws 
-                                (lexicographic | random) [Default: lexicographic]
-  --voters=VOTERS       Type of voters (general | truthful | lazy) [Default: general]
+                                (lexicographic | random)            [Default: lexicographic]
+  --voters=VOTERS       Type of voters (general | truthful | lazy)  [Default: general]
   -s, --seed=SEED       Randomization seed     [Default: 12345]
   -h, --help            Print the help screen
   --version             Prints the version and exits
@@ -167,45 +176,55 @@ Options:
 '''
 
     args = docopt(__doc__, version='0.1.0')
-    print(args)
+    # print(args)
+    seed = int(args['--seed'])
+    all_simulations_per_all_seeds = dict()
+    # TODO generate several seeds
+    args["assigned_seed"] = seed
 
-    rand = random.Random(args['--seed'])
+    # to be run in a separate MPI process or node
+    all_simulations_per_all_seeds[seed] = run_all_simulations_per_seed(args)
 
-    # if args.candidates:
-    #     print("candidates = ", args.candidates)
-    # if args.voters:
-    #     print("voters = ", args.voters)
+    # # print(average_time_to_convergence)
+    # # print(list(zip(*average_time_to_convergence)))
+    # plot_it(average_time_to_convergence, 'average time to convergence', n_candidates_range, n_voters_range)
+    # plot_it(average_social_welfare, 'average social welfare', n_candidates_range, n_voters_range)
+    # plot_it(percentage_of_convergence, 'percentage of convergence', n_candidates_range, n_voters_range)
+    # plot_it(num_stable_states_sets, 'num stable states', n_candidates_range, n_voters_range)
 
+
+def run_all_simulations_per_seed(args) -> list:
+    """Run different candidates numbers [5-7]* different voters numbers [cmin -12]* 50 repeat
+
+    :param args: all arguments after adjusting THIS suit seed
+    :return: list of measures, one for every profile (candidates/voters/preferences)
+    """
     utility = {
         'borda': BordaUtility(),
         'expo': ExpoUtility(base=args.get('<BASE>', 2),
                             exponent_step=args.get('<EXPO_STEP>', 1)),
     }.get(args['--utility'], None)
-
+    # percentage_of_convergence = []
+    # average_time_to_convergence = []
+    # average_social_welfare = []
+    # num_stable_states_sets = []
+    cmin = int(args['--cmin'])
+    cmax = int(args['--cmax'])
+    # vmin = int(args['--vmin'])
+    vmin = cmin if 'cmin' == args['--vmin'] else int(args['--vmin'])
+    vmax = int(args['--vmax'])
+    rand = random.Random(args['assigned_seed'])
     preference = {
         'single-peaked': SinglePeakedProfilePreference(),
         'general': GeneralProfilePreference(rand),
     }.get(args['--preference'], None)
-
     tie_breaking_rule = {
         'lexicographic': LexicographicTieBreakingRule(),
         'random': RandomTieBreakingRule(rand),
     }.get(args['--tiebreakingrule'], None)
-
     print(utility, preference, tie_breaking_rule)
-    percentage_of_convergence = []
-    average_time_to_convergence = []
-    average_social_welfare = []
-    num_stable_states_sets = []
-
-    cmin = int(args['--cmin'])
-    cmax = int(args['--cmax'])
-    vmin = int(args['--cmin'])
-    vmin = cmin if vmin == 'cmin' else int(vmin)
-    vmax = int(args['--vmax'])
-
+    all_profiles_measurements = []
     n_candidates_range = range(cmin, cmax + 1)
-    n_voters_range = []
     for n_candidates in n_candidates_range:
         # number of n_candidates <= n_voters <= 12
         n_voters_range = range(max(vmin, n_candidates), vmax + 1)
@@ -235,17 +254,12 @@ Options:
             print(measurements)
             print("-------")
 
-            average_time_to_convergence.append((n_candidates, n_voters, measurements.averageTimeToConvergence))
-            average_social_welfare.append((n_candidates, n_voters, measurements.averageSocial_welfare))
-            percentage_of_convergence.append((n_candidates, n_voters, measurements.percentage_of_convergence))
-            num_stable_states_sets.append((n_candidates, n_voters, len(measurements.stable_states_sets)))
-
-    # print(average_time_to_convergence)
-    # print(list(zip(*average_time_to_convergence)))
-    plot_it(average_time_to_convergence, 'average time to convergence', n_candidates_range, n_voters_range)
-    plot_it(average_social_welfare, 'average social welfare', n_candidates_range, n_voters_range)
-    plot_it(percentage_of_convergence, 'average time to convergence', n_candidates_range, n_voters_range)
-    plot_it(num_stable_states_sets, 'num stable states', n_candidates_range, n_voters_range)
+            all_profiles_measurements.append(measurements)
+            # average_time_to_convergence.append(measurements.averageTimeToConvergence)
+            # average_social_welfare.append(measurements.averageSocial_welfare)
+            # percentage_of_convergence.append(measurements.percentage_of_convergence)
+            # num_stable_states_sets.append(len(measurements.stable_states_sets))
+    return all_profiles_measurements
 
 
 def run_simulation(all_candidates: list, all_voters: list, current_status: Status, tie_breaking_rule: TieBreakingRule,
@@ -307,7 +321,7 @@ def run_simulation(all_candidates: list, all_voters: list, current_status: Statu
                     print()
                 else:
                     return converged(current_status, scenario)
-            # elif response.frm is response.to:
+            # elif response.frm == response.to:
             #     # voter was satisfied (currently a dead case)
             #     print()
             else:
