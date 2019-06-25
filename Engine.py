@@ -1,25 +1,15 @@
-import argparse
 import itertools
 from random import Random
 import matplotlib.pyplot as plt
 import sys
+import os
 
 from docopt import docopt
-from ntu.votes import utility
 from ntu.votes.candidate import *
 from ntu.votes.profilepreference import *
 from ntu.votes.tiebreaking import *
 from ntu.votes.utility import *
 from ntu.votes.voter import *
-
-# =======================
-__doc__ = """
-
-•	Number of voters is even and <= 12
-•	Number of candidates between 5 and 7
-•	Number of repeated runs per preference profile is 50 (random iteration sequences per profile)
-
-"""
 
 
 class Measurements:
@@ -45,8 +35,8 @@ class Measurements:
         return f"percentage_of_convergence = {self.percentage_of_convergence}\n" \
             f"averageTimeToConvergence = {self.averageTimeToConvergence}\n" \
             f"averageSocial_welfare = {self.averageSocial_welfare}\n" \
-            f"stable_states_sets: count = {len(self.stable_states_sets)}, repr = {self.stable_states_sets}\n" \
-            f"winning_sets: count = {len(self.winning_sets)}, repr = {self.winning_sets}\n" \
+            f"stable_states_sets: count = {len(self.stable_states_sets)}, repr = {[set(s) for s in self.stable_states_sets]}\n" \
+            f"winning_sets: count = {len(self.winning_sets)}, repr = {[set(s) for s in self.winning_sets]}\n" \
             f"percentage_truthful_winner_wins = {self.percentage_truthful_winner_wins}%\n" \
             f"percentage_winner_is_weak_condorcet = {self.percentage_winner_is_weak_condorcet}%\n" \
             f"percentage_winner_is_strong_condorcet = {self.percentage_winner_is_strong_condorcet}%\n"
@@ -158,8 +148,8 @@ Options:
   -C, --cmax=CMAX   Max number of candidates    [Default: 7]
   -v, --vmin=VMIN   Min number of Voters        [Default: cmin]
   -V, --vmax=VMAX   Max number of Voters        [Default: 12]
-  -l, --log=LFILE   Log file (if ommitted or -, output to stdout)   [Default -]
-  -o, --out-folder=OFOLDER      Output folder where all scenarios are written [Default ./out]
+  -l, --log=LFILE   Log file (if ommitted or -, output to stdout)   [Default: -]
+  -o, --out-folder=OFOLDER      Output folder where all scenarios are written [Default: ./out]
   -u, --utility=UTILITY         User Utility function (borda | expo)[Default: borda]
   -p, --preference=PREFERENCE   How a voter forms his ballot 
                                 order (single-peaked | general)     [Default: single-peaked]
@@ -180,10 +170,30 @@ Options:
     seed = int(args['--seed'])
     all_simulations_per_all_seeds = dict()
     # TODO generate several seeds
-    args["assigned_seed"] = seed
+
+    log_arg = args['--log']
+    if log_arg == '-':
+        log = sys.stdout
+    else:
+        if not os.path.exists(log_arg):
+            dirname = os.path.dirname(log_arg)
+            if dirname != '':  # If just a file name without a folder
+                os.makedirs(dirname, exist_ok=True)
+        log = open(log_arg, 'w')
+
+    out_path = os.path.join(args['--out-folder'], f'out-{seed}.log')
+    if not os.path.exists(out_path):
+        os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    out = open(out_path, 'w')
 
     # to be run in a separate MPI process or node
+    args["assigned_seed"] = seed
+    args['log'] = log
+    args['out'] = out
     all_simulations_per_all_seeds[seed] = run_all_simulations_per_seed(args)
+    out.close()
+    log.write("Done.\n")
+    log.close()
 
     # # print(average_time_to_convergence)
     # # print(list(zip(*average_time_to_convergence)))
@@ -199,15 +209,13 @@ def run_all_simulations_per_seed(args) -> list:
     :param args: all arguments after adjusting THIS suit seed
     :return: list of measures, one for every profile (candidates/voters/preferences)
     """
+    out = args['out']
+    log = args['log']
     utility = {
         'borda': BordaUtility(),
         'expo': ExpoUtility(base=args.get('<BASE>', 2),
                             exponent_step=args.get('<EXPO_STEP>', 1)),
     }.get(args['--utility'], None)
-    # percentage_of_convergence = []
-    # average_time_to_convergence = []
-    # average_social_welfare = []
-    # num_stable_states_sets = []
     cmin = int(args['--cmin'])
     cmax = int(args['--cmax'])
     # vmin = int(args['--vmin'])
@@ -222,7 +230,7 @@ def run_all_simulations_per_seed(args) -> list:
         'lexicographic': LexicographicTieBreakingRule(),
         'random': RandomTieBreakingRule(rand),
     }.get(args['--tiebreakingrule'], None)
-    print(utility, preference, tie_breaking_rule)
+    # print(utility, preference, tie_breaking_rule)
     all_profiles_measurements = []
     n_candidates_range = range(cmin, cmax + 1)
     for n_candidates in n_candidates_range:
@@ -232,7 +240,8 @@ def run_all_simulations_per_seed(args) -> list:
             if n_voters % 2:
                 continue
 
-            print(f"\n------------ voters = {n_voters}, Candidates = {n_candidates}-------------------")
+            out.write(f'\n------------ voters = {n_voters}, Candidates = {n_candidates}-------------------\n')
+            log.write(f'\n------------ voters = {n_voters}, Candidates = {n_candidates}-------------------\n')
             all_candidates = generate_candidates(n_candidates, rand)
             # print(all_candidates)
             all_voters = generate_voters(n_voters, args['--voters'], utility, rand)
@@ -247,12 +256,13 @@ def run_all_simulations_per_seed(args) -> list:
 
             alleles = []
             for run in range(50):
-                scenario = run_simulation(all_candidates, all_voters, initial_status, tie_breaking_rule, rand)
+                streams = {'log': log, 'out': out}
+                scenario = run_simulation(all_candidates, all_voters, initial_status, tie_breaking_rule, rand, **streams)
                 alleles.append(scenario)
             measurements = aggregate_alleles(alleles, all_voters, profile, utility, tie_breaking_rule)
-            print("-------measurements")
-            print(measurements)
-            print("-------")
+            log.write("-------measurements\n")
+            log.write(str(measurements)+'\n')
+            log.write("-------\n")
 
             all_profiles_measurements.append(measurements)
             # average_time_to_convergence.append(measurements.averageTimeToConvergence)
@@ -263,7 +273,7 @@ def run_all_simulations_per_seed(args) -> list:
 
 
 def run_simulation(all_candidates: list, all_voters: list, current_status: Status, tie_breaking_rule: TieBreakingRule,
-                   rand: Random) -> list:
+                   rand: Random, **streams) -> list:
     """
 
     :param tie_breaking_rule:
@@ -273,11 +283,13 @@ def run_simulation(all_candidates: list, all_voters: list, current_status: Statu
     :param rand:
     :type rand: Random
     """
+    log = streams['log']
+    out = streams['out']
     scenario = []
     # only increase
     abstaining_voters_indices = []
     # now for the initial status
-    print(current_status, "Initial state")
+    out.write(f'{current_status}\tInitial state\n')
     scenario.append(current_status.copy())
     step = 0
     max_steps = len(all_voters) * len(all_candidates)
@@ -309,7 +321,7 @@ def run_simulation(all_candidates: list, all_voters: list, current_status: Statu
             scenario.append(response)
             step += 1
 
-            print(current_status, f'{index:#2}', response, end='\t')
+            out.write(f'{current_status}\t{index:#2}\t{response}\t')
             # evaluate the status
             if response.to is None:
                 # couldn't enhance
@@ -318,14 +330,14 @@ def run_simulation(all_candidates: list, all_voters: list, current_status: Statu
                     abstaining_voters_indices.append(index)
 
                 if len(active_voters_indices):
-                    print()
+                    out.write('\n')
                 else:
-                    return converged(current_status, scenario)
+                    return converged(current_status, scenario, **streams)
             # elif response.frm == response.to:
             #     # voter was satisfied (currently a dead case)
-            #     print()
+            #     out.write('\n')
             else:
-                print("<-- enhancement")
+                out.write("<-- enhancement\n")
                 current_status.votes[response.frm] = current_status.votes[response.frm] - 1
                 current_status.votes[response.to] = current_status.votes[response.to] + 1
                 current_status.in_order()
@@ -339,9 +351,9 @@ def run_simulation(all_candidates: list, all_voters: list, current_status: Statu
             continue
         else:
             # max steps exhausted
-            return not_converged(current_status, scenario)
+            return not_converged(current_status, scenario, **streams)
     else:
-        return not_converged(current_status, scenario)
+        return not_converged(current_status, scenario, **streams)
 
 
 def plot_it(passed_in_array, label: str, n_candidates_range, n_voters_range):
@@ -372,16 +384,18 @@ def plot_it(passed_in_array, label: str, n_candidates_range, n_voters_range):
     plt.show()
 
 
-def converged(last_status: Status, scenario: list) -> list:
-    print("Converged")
-    print(last_status, "Final state")
+def converged(last_status: Status, scenario: list, **streams) -> list:
+    out = streams['out']
+    out.write("Converged\n")
+    out.write(f'{last_status}\tFinal state\n')
     scenario.append(last_status.copy())
     scenario.append(True)
     return scenario
 
 
-def not_converged(last_status: Status, scenario: list) -> list:
-    print(last_status, "No convergence")
+def not_converged(last_status: Status, scenario: list, **streams) -> list:
+    out = streams['out']
+    out.write(last_status, "No convergence\n")
     scenario.append(last_status.copy())
     scenario.append(False)
     return scenario
