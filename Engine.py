@@ -1,6 +1,6 @@
 import itertools
 from random import Random
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
 import sys
 import os
 
@@ -169,29 +169,30 @@ Options:
     # print(args)
     seed = int(args['--seed'])
     all_simulations_per_all_seeds = dict()
-    # TODO generate several seeds
+    log = out = None
+    # TODO better generation of several seeds
+    for assigned_seed in range(seed, seed+100+1):
+        log_arg = args['--log']
+        if log_arg == '-':
+            log = sys.stdout
+        else:
+            if not os.path.exists(log_arg):
+                dirname = os.path.dirname(log_arg)
+                if dirname != '':  # If just a file name without a folder
+                    os.makedirs(dirname, exist_ok=True)
+            log = open(log_arg, 'w')
 
-    log_arg = args['--log']
-    if log_arg == '-':
-        log = sys.stdout
-    else:
-        if not os.path.exists(log_arg):
-            dirname = os.path.dirname(log_arg)
-            if dirname != '':  # If just a file name without a folder
-                os.makedirs(dirname, exist_ok=True)
-        log = open(log_arg, 'w')
+        out_path = os.path.join(args['--out-folder'], f'out-{assigned_seed}.log')
+        if not os.path.exists(out_path):
+            os.makedirs(os.path.dirname(out_path), exist_ok=True)
+        out = open(out_path, 'w')
 
-    out_path = os.path.join(args['--out-folder'], f'out-{seed}.log')
-    if not os.path.exists(out_path):
-        os.makedirs(os.path.dirname(out_path), exist_ok=True)
-    out = open(out_path, 'w')
-
-    # to be run in a separate MPI process or node
-    args["assigned_seed"] = seed
-    args['log'] = log
-    args['out'] = out
-    all_simulations_per_all_seeds[seed] = run_all_simulations_per_seed(args)
-    out.close()
+        # to be run in a separate MPI process or node
+        args["assigned_seed"] = assigned_seed
+        args['log'] = log
+        args['out'] = out
+        all_simulations_per_all_seeds[assigned_seed] = run_all_simulations_per_seed(args)
+        out.close()
     log.write("Done.\n")
     log.close()
 
