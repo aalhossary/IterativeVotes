@@ -1,8 +1,11 @@
 import itertools
+
+import math
 from random import Random
-# import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt
 import sys
 import os
+from mpi4py import MPI
 
 from docopt import docopt
 from ntu.votes.candidate import *
@@ -32,7 +35,9 @@ class Measurements:
         self.winning_sets = set()
 
     def __str__(self):
-        return f"percentage_of_convergence = {self.percentage_of_convergence}\n" \
+        return f"n_voters = {self.n_voters}\n" \
+            f"n_candidates = {self.n_candidates}\n" \
+            f"percentage_of_convergence = {self.percentage_of_convergence}\n" \
             f"averageTimeToConvergence = {self.averageTimeToConvergence}\n" \
             f"averageSocial_welfare = {self.averageSocial_welfare}\n" \
             f"stable_states_sets: count = {len(self.stable_states_sets)}, repr = {[set(s) for s in self.stable_states_sets]}\n" \
@@ -135,7 +140,7 @@ def is_condorset_winner(profile: list, query: Candidate, week=True) -> bool:
 
 
 def main():
-    __doc__ = '''Iterative voting engine
+    doc = """Iterative voting engine
 
 Usage:
   Engine.py [options]
@@ -163,15 +168,26 @@ Options:
   EXPO_STEP             The exponent increment [Default: 1]
 
 
-'''
+"""
 
-    args = docopt(__doc__, version='0.1.0')
+    comm = MPI.COMM_WORLD
+    args = docopt(doc, version='0.1.0')
     # print(args)
     seed = int(args['--seed'])
     all_simulations_per_all_seeds = dict()
     log = out = None
-    # TODO better generation of several seeds
-    for assigned_seed in range(seed, seed+100+1):
+
+    seeds_rank = comm.Get_rank()
+    seeds_num_processors = comm.Get_size()
+    seeds_all_previously_run_count = 0
+    seeds_run_base = seed
+    seeds_run_size = 100  # initially 100, later will be half sum seeds_all_previously_run_count + last seeds_run_size
+    seeds_chunk_size = int(math.ceil(seeds_run_size / seeds_num_processors))
+    seeds_chunk_base = seeds_run_base + (seeds_rank * seeds_chunk_size)
+    # print(seeds_run_size, seeds_rank, seeds_run_base, seeds_run_size, seeds_chunk_size, seeds_chunk_base)
+
+    for assigned_seed in range(seeds_chunk_base,
+                               min((seeds_chunk_base + seeds_chunk_size), (seeds_run_base + seeds_run_size))):
         log_arg = args['--log']
         if log_arg == '-':
             log = sys.stdout
@@ -193,6 +209,15 @@ Options:
         args['out'] = out
         all_simulations_per_all_seeds[assigned_seed] = run_all_simulations_per_seed(args)
         out.close()
+    # collect the simulations results from several threads
+    buffer = comm.gather(all_simulations_per_all_seeds, root=0)
+    if seeds_rank == 0:
+        for dct in buffer:
+            for item in dct.items():
+                print(item[0])
+                for msrmnt in item[1]:
+                    print(str(msrmnt))
+
     log.write("Done.\n")
     log.close()
 
@@ -284,7 +309,7 @@ def run_simulation(all_candidates: list, all_voters: list, current_status: Statu
     :param rand:
     :type rand: Random
     """
-    log = streams['log']
+    # log = streams['log']
     out = streams['out']
     scenario = []
     # only increase
