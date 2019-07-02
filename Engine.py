@@ -344,6 +344,10 @@ def run_simulation(all_candidates: list, all_voters: list, current_status: Statu
                     current_status.toppers, all_voters[i].most_recent_vote) < (1 / n_toppers),
                        active_voters_indices))
 
+        # if NO active voters (corner case, where everyone is already satisfied with the same single candidate)
+        if not active_voters_indices:
+            return converged(current_status, scenario, write_converged=False, **streams)
+
         status_changed = bool
         # Select one voter randomly from Current active_voters_indices list
         while len(active_voters_indices) > 0 and step < max_steps:  # Note that we check number of steps as well
