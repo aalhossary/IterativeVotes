@@ -171,24 +171,14 @@ Options:
 
 """
 
-    comm = MPI.COMM_WORLD
     args = docopt(doc, version='0.1.0')
     # print(args)
     seed = int(args['--seed'])
     all_simulations_per_all_seeds = dict()
     log = out = None
 
-    seeds_rank = comm.Get_rank()
-    seeds_num_processors = comm.Get_size()
-    seeds_all_previously_run_count = 0
-    seeds_run_base = seed
-    seeds_run_size = 100  # initially 100, later will be half sum seeds_all_previously_run_count + last seeds_run_size
-    seeds_chunk_size = int(math.ceil(seeds_run_size / seeds_num_processors))
-    seeds_chunk_base = seeds_run_base + (seeds_rank * seeds_chunk_size)
-    # print(seeds_run_size, seeds_rank, seeds_run_base, seeds_run_size, seeds_chunk_size, seeds_chunk_base)
-
-    for assigned_seed in range(seeds_chunk_base,
-                               min((seeds_chunk_base + seeds_chunk_size), (seeds_run_base + seeds_run_size))):
+    comm = MPI.COMM_WORLD
+    if comm.Get_rank() == 0:
         log_arg = args['--log']
         if log_arg == '-':
             log = sys.stdout
@@ -199,28 +189,65 @@ Options:
                     os.makedirs(dirname, exist_ok=True)
             log = open(log_arg, 'w')
 
-        out_path = os.path.join(args['--out-folder'], f'out-{assigned_seed}.log')
-        if not os.path.exists(out_path):
-            os.makedirs(os.path.dirname(out_path), exist_ok=True)
-        out = open(out_path, 'w')
+    all_previously_run = dict()  # To hold all runs from all seeds simulated on all threads
+    seeds__rank = comm.Get_rank()
+    seeds__num_processors = comm.Get_size()
+    seeds__all_previously_run_count = 0
+    seeds__run_base = seed
+    seeds__run_size = 100
 
-        # to be run in a separate MPI process or node
-        args["assigned_seed"] = assigned_seed
-        args['log'] = log
-        args['out'] = out
-        all_simulations_per_all_seeds[assigned_seed] = run_all_simulations_per_seed(args)
-        out.close()
-    # collect the simulations results from several threads
-    buffer = comm.gather(all_simulations_per_all_seeds, root=0)
-    if seeds_rank == 0:
-        for dct in buffer:
-            for item in dct.items():
-                print(item[0])
-                for msrmnt in item[1]:
-                    print(str(msrmnt))
+    more_work = True
 
-    log.write("Done.\n")
-    log.close()
+    while more_work:
+        seeds__chunk_size = int(math.ceil(seeds__run_size / seeds__num_processors))
+        seeds__chunk_base = seeds__run_base + (seeds__rank * seeds__chunk_size)  # inclusive
+        seeds__chunk_end = min((seeds__chunk_base + seeds__chunk_size), (seeds__run_base + seeds__run_size))  # excl
+        # print(seeds__run_size, seeds__rank, seeds__run_base, seeds__run_size, seeds__chunk_size, seeds__chunk_base)
+        if seeds__rank == 0:
+            msg = f'going to start a run of {seeds__run_size} on {seeds__num_processors} batches, ' \
+                f'{seeds__chunk_size} runs each'
+            log.write(msg+'\n')
+            log.write(f'Thread {seeds__rank} starts with seed {seeds__chunk_base} (in) to {seeds__chunk_end} (ex)\n')
+            log.flush()
+
+        for assigned_seed in range(seeds__chunk_base, seeds__chunk_end):
+            out_path = os.path.join(args['--out-folder'], f'out-{assigned_seed}.log')
+            if not os.path.exists(out_path):
+                os.makedirs(os.path.dirname(out_path), exist_ok=True)
+            out = open(out_path, 'w')
+
+            # to be run in a separate MPI process or node
+            args["assigned_seed"] = assigned_seed
+            args['log'] = log
+            args['out'] = out
+            all_simulations_per_all_seeds[assigned_seed] = run_all_simulations_per_seed(args)
+            out.close()
+        # collect the simulations results from several threads
+        buffer = comm.gather(all_simulations_per_all_seeds, root=0)
+        if seeds__rank == 0:
+            # add all values
+            for returned_dict in buffer:  # [{seed, [measurements, ...]}, ...]
+                for key in iter(returned_dict):
+                    all_previously_run[key] = returned_dict[key]
+
+        # check for convergence
+        if seeds__rank == 0:
+            more_work = not run_converged(all_previously_run, seeds__all_previously_run_count)
+        else:
+            more_work = None
+        more_work = comm.bcast(more_work, root=0)
+        # print(f'Thread {seeds__rank} more work =', more_work, flush=True)
+
+        seeds__run_base += seeds__run_size
+        seeds__run_size = int(math.ceil((seeds__run_size + seeds__all_previously_run_count) / 2))
+        if seeds__rank == 0:
+            seeds__all_previously_run_count = len(all_previously_run)
+        seeds__all_previously_run_count = comm.bcast(seeds__all_previously_run_count, root=0)
+
+    if comm.Get_rank == 0:
+        log.write("Done.\n")
+        log.flush()
+        log.close()
 
     # # print(average_time_to_convergence)
     # # print(list(zip(*average_time_to_convergence)))
