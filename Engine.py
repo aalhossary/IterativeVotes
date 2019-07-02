@@ -48,7 +48,8 @@ class Measurements:
             f"percentage_winner_is_strong_condorcet = {self.percentage_winner_is_strong_condorcet}%"
 
 
-def aggregate_alleles(alleles: list, all_voters: list, profile: list, utility: Utility, tiebreakingrule: TieBreakingRule) -> Measurements:
+def aggregate_alleles(alleles: list, all_voters: list, profile: list, utility: Utility,
+                      tiebreakingrule: TieBreakingRule) -> Measurements:
     measurements = Measurements()
     measurements.n_voters = len(profile)  # len(all_voters) is also OK
     measurements.n_candidates = len(profile[0])
@@ -318,7 +319,8 @@ def run_all_simulations_per_seed(args) -> list:
             alleles = []
             for run in range(50):
                 streams = {'log': log, 'out': out}
-                scenario = run_simulation(all_candidates, all_voters, initial_status, tie_breaking_rule, rand, **streams)
+                scenario = run_simulation(all_candidates, all_voters, initial_status, tie_breaking_rule, rand,
+                                          **streams)
                 alleles.append(scenario)
             measurements = aggregate_alleles(alleles, all_voters, profile, utility, tie_breaking_rule)
             # log.write("-------measurements\n")
@@ -373,7 +375,7 @@ def run_simulation(all_candidates: list, all_voters: list, current_status: Statu
 
         # if NO active voters (corner case, where everyone is already satisfied with the same single candidate)
         if not active_voters_indices:
-            return converged(current_status, scenario, write_converged=False, **streams)
+            return simulation_converged(current_status, scenario, write_converged=False, **streams)
 
         status_changed = bool
         # Select one voter randomly from Current active_voters_indices list
@@ -398,7 +400,7 @@ def run_simulation(all_candidates: list, all_voters: list, current_status: Statu
                 if len(active_voters_indices):
                     out.write('\n')
                 else:
-                    return converged(current_status, scenario, **streams)
+                    return simulation_converged(current_status, scenario, **streams)
             # elif response.frm == response.to:
             #     # voter was satisfied (currently a dead case)
             #     out.write('\n')
@@ -417,9 +419,9 @@ def run_simulation(all_candidates: list, all_voters: list, current_status: Statu
             continue
         else:
             # max steps exhausted
-            return not_converged(current_status, scenario, **streams)
+            return simulation_not_converged(current_status, scenario, **streams)
     else:
-        return not_converged(current_status, scenario, **streams)
+        return simulation_not_converged(current_status, scenario, **streams)
 
 
 def plot_it(passed_in_array, label: str, n_candidates_range, n_voters_range):
@@ -450,7 +452,7 @@ def plot_it(passed_in_array, label: str, n_candidates_range, n_voters_range):
     plt.show()
 
 
-def converged(last_status: Status, scenario: list, write_converged= True, **streams) -> list:
+def simulation_converged(last_status: Status, scenario: list, write_converged=True, **streams) -> list:
     out = streams['out']
     if write_converged:
         out.write("Converged\n")
@@ -461,7 +463,7 @@ def converged(last_status: Status, scenario: list, write_converged= True, **stre
     return scenario
 
 
-def not_converged(last_status: Status, scenario: list, **streams) -> list:
+def simulation_not_converged(last_status: Status, scenario: list, **streams) -> list:
     out = streams['out']
     out.write(last_status, "No convergence\n")
     out.flush()
