@@ -1,5 +1,4 @@
 import itertools
-
 import math
 from random import Random
 import matplotlib.pyplot as plt
@@ -35,16 +34,18 @@ class Measurements:
         self.winning_sets = set()
 
     def __str__(self):
+        sss = self.stable_states_sets
+        ws = self.winning_sets
         return f"n_voters = {self.n_voters}\n" \
             f"n_candidates = {self.n_candidates}\n" \
             f"percentage_of_convergence = {self.percentage_of_convergence}\n" \
             f"averageTimeToConvergence = {self.averageTimeToConvergence}\n" \
             f"averageSocial_welfare = {self.averageSocial_welfare}\n" \
-            f"stable_states_sets: count = {len(self.stable_states_sets)}, repr = {[set(s) for s in self.stable_states_sets]}\n" \
-            f"winning_sets: count = {len(self.winning_sets)}, repr = {[set(s) for s in self.winning_sets]}\n" \
+            f"stable_states_sets: count = {len(sss)}, repr = {[set(s) for s in sss]}\n" \
+            f"winning_sets: count = {len(ws)}, repr = {[set(s) for s in ws]}\n" \
             f"percentage_truthful_winner_wins = {self.percentage_truthful_winner_wins}%\n" \
             f"percentage_winner_is_weak_condorcet = {self.percentage_winner_is_weak_condorcet}%\n" \
-            f"percentage_winner_is_strong_condorcet = {self.percentage_winner_is_strong_condorcet}%\n"
+            f"percentage_winner_is_strong_condorcet = {self.percentage_winner_is_strong_condorcet}%"
 
 
 def aggregate_alleles(alleles: list, all_voters: list, profile: list, utility: Utility, tiebreakingrule: TieBreakingRule) -> Measurements:
@@ -229,6 +230,12 @@ Options:
     # plot_it(num_stable_states_sets, 'num stable states', n_candidates_range, n_voters_range)
 
 
+def run_converged(all_previously_run: dict, seeds_all_previously_run_count: int):
+    print("seeds_all_previously_run_count ", seeds_all_previously_run_count, flush=True)
+    # TODO Implement a real condition
+    return seeds_all_previously_run_count > 700
+
+
 def run_all_simulations_per_seed(args) -> list:
     """Run different candidates numbers [5-7]* different voters numbers [cmin -12]* 50 repeat
 
@@ -267,11 +274,12 @@ def run_all_simulations_per_seed(args) -> list:
                 continue
 
             out.write(f'\n------------ voters = {n_voters}, Candidates = {n_candidates}-------------------\n')
-            log.write(f'\n------------ voters = {n_voters}, Candidates = {n_candidates}-------------------\n')
+            out.flush()
+            # log.write(f'\n------------ voters = {n_voters}, Candidates = {n_candidates}-------------------\n')
             all_candidates = generate_candidates(n_candidates, rand)
-            # print(all_candidates)
+            # print(all_candidates, flush=True)
             all_voters = generate_voters(n_voters, args['--voters'], utility, rand)
-            # print(all_voters)
+            # print(all_voters, flush=True)
 
             # voters build their preferences
             for voter in all_voters:
@@ -286,9 +294,9 @@ def run_all_simulations_per_seed(args) -> list:
                 scenario = run_simulation(all_candidates, all_voters, initial_status, tie_breaking_rule, rand, **streams)
                 alleles.append(scenario)
             measurements = aggregate_alleles(alleles, all_voters, profile, utility, tie_breaking_rule)
-            log.write("-------measurements\n")
-            log.write(str(measurements)+'\n')
-            log.write("-------\n")
+            # log.write("-------measurements\n")
+            # log.write(str(measurements)+'\n')
+            # log.write("-------\n")
 
             all_profiles_measurements.append(measurements)
             # average_time_to_convergence.append(measurements.averageTimeToConvergence)
@@ -316,6 +324,7 @@ def run_simulation(all_candidates: list, all_voters: list, current_status: Statu
     abstaining_voters_indices = []
     # now for the initial status
     out.write(f'{current_status}\tInitial state\n')
+    out.flush()
     scenario.append(current_status.copy())
     step = 0
     max_steps = len(all_voters) * len(all_candidates)
@@ -326,7 +335,7 @@ def run_simulation(all_candidates: list, all_voters: list, current_status: Statu
         n_toppers = len(current_status.toppers)
         if n_toppers < 2:
             active_voters_indices = list(
-                itertools.filterfalse(lambda i: all_voters[i].most_recent_vote is current_status.toppers[0],
+                itertools.filterfalse(lambda i: all_voters[i].most_recent_vote == current_status.toppers[0],
                                       active_voters_indices))
         else:
             # This condition needs to be double checked for all corner cases
@@ -410,10 +419,12 @@ def plot_it(passed_in_array, label: str, n_candidates_range, n_voters_range):
     plt.show()
 
 
-def converged(last_status: Status, scenario: list, **streams) -> list:
+def converged(last_status: Status, scenario: list, write_converged= True, **streams) -> list:
     out = streams['out']
-    out.write("Converged\n")
+    if write_converged:
+        out.write("Converged\n")
     out.write(f'{last_status}\tFinal state\n')
+    out.flush()
     scenario.append(last_status.copy())
     scenario.append(True)
     return scenario
@@ -422,6 +433,7 @@ def converged(last_status: Status, scenario: list, **streams) -> list:
 def not_converged(last_status: Status, scenario: list, **streams) -> list:
     out = streams['out']
     out.write(last_status, "No convergence\n")
+    out.flush()
     scenario.append(last_status.copy())
     scenario.append(False)
     return scenario
