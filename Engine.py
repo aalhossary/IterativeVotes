@@ -48,6 +48,43 @@ class Measurements:
             f"percentage_winner_is_strong_condorcet = {self.percentage_winner_is_strong_condorcet}%"
 
 
+class MeasurementsSummary(Measurements):
+
+    def __init__(self):
+        super().__init__()
+        self.n_voters = self.n_candidates = self.averageSocial_welfare = self.averageTimeToConvergence = \
+            self.percentage_of_convergence = self.percentage_truthful_winner_wins = \
+            self.percentage_winner_is_weak_condorcet = self.percentage_winner_is_strong_condorcet = 0
+        self.len_winning_sets = self.len_stable_states_sets = 0
+
+    @staticmethod
+    def from_iterable(it, n_candidates, n_voters) -> 'MeasurementsSummary':
+        ret = MeasurementsSummary()
+        for i in iter(it):
+            assert i.n_candidates == n_candidates
+            assert i.n_voters == n_voters
+            ret.n_candidates = n_candidates
+            ret.n_voters = n_voters
+            ret.percentage_winner_is_weak_condorcet += i.percentage_winner_is_weak_condorcet
+            ret.percentage_winner_is_strong_condorcet += i.percentage_winner_is_strong_condorcet
+            ret.percentage_truthful_winner_wins += i.percentage_truthful_winner_wins
+            ret.percentage_of_convergence += i.percentage_of_convergence
+            ret.averageTimeToConvergence += i.averageTimeToConvergence
+            ret.averageSocial_welfare += i.averageSocial_welfare
+            ret.len_stable_states_sets += len(i.stable_states_sets)
+            ret.len_winning_sets += len(i.winning_sets)
+        len_it = len(it)
+        ret.percentage_winner_is_strong_condorcet /= len_it
+        ret.percentage_winner_is_weak_condorcet /= len_it
+        ret.percentage_truthful_winner_wins /= len_it
+        ret.percentage_of_convergence /= len_it
+        ret.averageTimeToConvergence /= len_it
+        ret.averageSocial_welfare /= len_it
+        ret.len_stable_states_sets /= len_it
+        ret.len_winning_sets /= len_it
+        return ret
+
+
 def aggregate_alleles(alleles: list, all_voters: list, profile: list, utility: Utility,
                       tiebreakingrule: TieBreakingRule) -> Measurements:
     measurements = Measurements()
@@ -231,6 +268,10 @@ Options:
                 for key in iter(returned_dict):
                     all_previously_run[key] = returned_dict[key]
 
+        if seeds__rank == 0:
+            # generate graph(s)
+            generate_graphs(all_previously_run, seeds__all_previously_run_count)
+
         # check for convergence
         if seeds__rank == 0:
             more_work = not run_converged(all_previously_run, seeds__all_previously_run_count)
@@ -245,7 +286,7 @@ Options:
             seeds__all_previously_run_count = len(all_previously_run)
         seeds__all_previously_run_count = comm.bcast(seeds__all_previously_run_count, root=0)
 
-    if comm.Get_rank == 0:
+    if seeds__rank == 0:
         log.write("Done.\n")
         log.flush()
         log.close()
@@ -259,7 +300,7 @@ Options:
 
 
 def run_converged(all_previously_run: dict, seeds_all_previously_run_count: int):
-    print("seeds_all_previously_run_count ", seeds_all_previously_run_count, flush=True)
+    # print("seeds_all_previously_run_count ", seeds_all_previously_run_count, flush=True)
     # TODO Implement a real condition
     return seeds_all_previously_run_count > 700
 
@@ -422,6 +463,52 @@ def run_simulation(all_candidates: list, all_voters: list, current_status: Statu
             return simulation_not_converged(current_status, scenario, **streams)
     else:
         return simulation_not_converged(current_status, scenario, **streams)
+
+
+def generate_graphs(all_previously_run:dict, seeds_all_previously_run_count: int):
+    temp = all_previously_run.popitem()
+    seed, sample_measurements_arr = temp[0], temp[1]
+    all_previously_run[seed] = sample_measurements_arr
+
+    n_candidates_range = sorted({msrmnt.n_candidates for msrmnt in sample_measurements_arr})
+    n_voters_range = sorted({msrmnt.n_voters for msrmnt in sample_measurements_arr})
+    # print(n_candidates_range)
+    # print(n_voters_range, flush=True)
+    all_measurements_by_candidates = dict()
+    all_measurements_by_voters = dict()
+    for n_candidates in n_candidates_range:
+        all_measurements_by_candidates[n_candidates] = dict()
+        for n_voters in n_voters_range:
+            if n_voters < n_candidates:
+                continue
+            msrmnt_set = {msrmnt
+                          for sample_measurements_arr in all_previously_run.values()
+                          for msrmnt in sample_measurements_arr
+                          if msrmnt.n_candidates == n_candidates and msrmnt.n_voters == n_voters}
+            measurements_summary = MeasurementsSummary.from_iterable(msrmnt_set, n_candidates, n_voters)
+            all_measurements_by_candidates[n_candidates][n_voters] = measurements_summary
+            all_measurements_by_voters.setdefault(n_voters,dict())[n_candidates] = measurements_summary
+
+    for curve_dict in all_measurements_by_candidates.items():
+        n_candidates, curve_list = curve_dict[0], curve_dict[1]
+        lst = [(i[0], operator.attrgetter('averageTimeToConvergence')(i[1])) for i in curve_list.items()]
+        print(n_candidates, lst)
+        separate_x_y = list(zip(*lst))
+        print("separate: ", separate_x_y)
+        if separate_x_y:
+            plt.plot(separate_x_y[0], separate_x_y[1], 'o-', label=f'candidates = {n_candidates}')
+    plt.title('averageTimeToConvergence')
+    plt.legend()
+    plt.xlabel('Voters')
+    plt.show()
+    # ret.percentage_winner_is_strong_condorcet /= len_it
+        # ret.percentage_winner_is_weak_condorcet /= len_it
+        # ret.percentage_truthful_winner_wins /= len_it
+        # ret.percentage_of_convergence /= len_it
+        # ret.averageTimeToConvergence /= len_it
+        # ret.averageSocial_welfare /= len_it
+        # ret.len_stable_states_sets /= len_it
+        # ret.len_winning_sets /= len_it
 
 
 def plot_it(passed_in_array, label: str, n_candidates_range, n_voters_range):
