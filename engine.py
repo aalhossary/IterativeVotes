@@ -182,9 +182,9 @@ def main():
     doc = """Iterative voting engine
 
 Usage:
-  Engine.py [options]
-  Engine.py [options] [--utility borda]
-  Engine.py [options] [--utility expo [<BASE> [<EXPO_STEP>]]]
+  engine.py [options]
+  engine.py [options] [--utility borda]
+  engine.py [options] [--utility expo [<BASE> [<EXPO_STEP>]]]
 
 
 Options:
