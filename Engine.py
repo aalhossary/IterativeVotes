@@ -249,7 +249,7 @@ Options:
             log.flush()
 
         for assigned_seed in range(seeds__chunk_base, seeds__chunk_end):
-            out_path = os.path.join(args['--out-folder'], f'out-{assigned_seed}.log')
+            out_path = os.path.join(args['--out-folder'], f'out-{assigned_seed:05}.log')
             if not os.path.exists(out_path):
                 os.makedirs(os.path.dirname(out_path), exist_ok=True)
             out = open(out_path, 'w')
@@ -302,7 +302,7 @@ Options:
 def run_converged(all_previously_run: dict, seeds_all_previously_run_count: int):
     # print("seeds_all_previously_run_count ", seeds_all_previously_run_count, flush=True)
     # TODO Implement a real condition
-    return seeds_all_previously_run_count > 700
+    return seeds_all_previously_run_count > 200
 
 
 def run_all_simulations_per_seed(args) -> list:
