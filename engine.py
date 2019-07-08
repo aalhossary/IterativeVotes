@@ -232,7 +232,7 @@ Options:
     seeds__num_processors = comm.Get_size()
     seeds__all_previously_run_count = 0
     seeds__run_base = seed
-    seeds__run_size = 100
+    seeds__run_size = 50
 
     more_work = True
 
@@ -263,18 +263,20 @@ Options:
         # collect the simulations results from several threads
         buffer = comm.gather(all_simulations_per_all_seeds, root=0)
         if seeds__rank == 0:
-            # add all values
+            # Add all (gather new) values
             for returned_dict in buffer:  # [{seed, [measurements, ...]}, ...]
                 for key in iter(returned_dict):
                     all_previously_run[key] = returned_dict[key]
 
-        if seeds__rank == 0:
-            # generate graph(s)
-            generate_graphs(all_previously_run, seeds__all_previously_run_count)
+            # sort results
+            all_measurements_by_candidates, all_measurements_by_voters = sort_measurements(all_previously_run)
 
-        # check for convergence
-        if seeds__rank == 0:
-            more_work = not run_converged(all_previously_run, seeds__all_previously_run_count)
+            # generate graph(s)
+            generate_graphs(all_measurements_by_candidates, all_measurements_by_voters, seeds__all_previously_run_count)
+
+            # check for convergence
+            more_work = not (run_converged(all_measurements_by_candidates, seeds__all_previously_run_count) or
+                             run_converged(all_measurements_by_voters, seeds__all_previously_run_count))
         else:
             more_work = None
         more_work = comm.bcast(more_work, root=0)
@@ -299,10 +301,17 @@ Options:
     # plot_it(num_stable_states_sets, 'num stable states', n_candidates_range, n_voters_range)
 
 
-def run_converged(all_previously_run: dict, seeds_all_previously_run_count: int):
-    # print("seeds_all_previously_run_count ", seeds_all_previously_run_count, flush=True)
+def run_converged(all_measurements_sorted: dict, seeds_all_previously_run_count: int, extremities=0.05, diff=0.07):
+    # print('=============================')
+    for att_name in ['averageTimeToConvergence', 'percentage_truthful_winner_wins']:
+        for level1 in all_measurements_sorted.items():
+            for level2 in level1[1].items():
+                msrmnt_set = level2[1]
+                values = sorted([operator.attrgetter(att_name)(msrmnt) for msrmnt in msrmnt_set])
+                # print(level1[0], level2[0], att_name, values)
+    # print('-----------------------------')
     # TODO Implement a real condition
-    return seeds_all_previously_run_count > 200
+    return seeds_all_previously_run_count > 100
 
 
 def run_all_simulations_per_seed(args) -> list:
@@ -465,11 +474,10 @@ def run_simulation(all_candidates: list, all_voters: list, current_status: Statu
         return simulation_not_converged(current_status, scenario, **streams)
 
 
-def generate_graphs(all_previously_run:dict, seeds_all_previously_run_count: int):
+def sort_measurements(all_previously_run: dict):
     temp = all_previously_run.popitem()
     seed, sample_measurements_arr = temp[0], temp[1]
     all_previously_run[seed] = sample_measurements_arr
-
     n_candidates_range = sorted({msrmnt.n_candidates for msrmnt in sample_measurements_arr})
     n_voters_range = sorted({msrmnt.n_voters for msrmnt in sample_measurements_arr})
     # print(n_candidates_range)
@@ -481,17 +489,24 @@ def generate_graphs(all_previously_run:dict, seeds_all_previously_run_count: int
         for n_voters in n_voters_range:
             if n_voters < n_candidates:
                 continue
-            msrmnt_set = {msrmnt
+            msrmnt_arr = [msrmnt
                           for sample_measurements_arr in all_previously_run.values()
                           for msrmnt in sample_measurements_arr
-                          if msrmnt.n_candidates == n_candidates and msrmnt.n_voters == n_voters}
-            measurements_summary = MeasurementsSummary.from_iterable(msrmnt_set, n_candidates, n_voters)
-            all_measurements_by_candidates[n_candidates][n_voters] = measurements_summary
-            all_measurements_by_voters.setdefault(n_voters,dict())[n_candidates] = measurements_summary
+                          if msrmnt.n_candidates == n_candidates and msrmnt.n_voters == n_voters]
+            # measurements_summary = MeasurementsSummary.from_iterable(msrmnt_arr, n_candidates, n_voters)
+            all_measurements_by_candidates[n_candidates][n_voters] = msrmnt_arr
+            all_measurements_by_voters.setdefault(n_voters, dict())[n_candidates] = msrmnt_arr
+    return all_measurements_by_candidates, all_measurements_by_voters
 
+
+def generate_graphs(all_measurements_by_candidates: dict, all_measurements_by_voters: dict, seeds_all_previously_run_count: int):
+    # TODO remove MeasurementsSummary class and replace it with another loop level
     for curve_dict in all_measurements_by_candidates.items():
         n_candidates, curve_list = curve_dict[0], curve_dict[1]
-        lst = [(i[0], operator.attrgetter('averageTimeToConvergence')(i[1])) for i in curve_list.items()]
+        lst = [(i[0],
+                operator.attrgetter('averageTimeToConvergence')(
+                    MeasurementsSummary.from_iterable(i[1], n_candidates, i[0])))
+               for i in curve_list.items()]
         print(n_candidates, lst)
         separate_x_y = list(zip(*lst))
         print("separate: ", separate_x_y)
