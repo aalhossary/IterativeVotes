@@ -244,7 +244,7 @@ Options:
         if seeds__rank == 0:
             msg = f'going to start a run of {seeds__run_size} on {seeds__num_processors} batches, ' \
                 f'{seeds__chunk_size} runs each'
-            log.write(msg+'\n')
+            log.write(msg + '\n')
             log.write(f'Thread {seeds__rank} starts with seed {seeds__chunk_base} (in) to {seeds__chunk_end} (ex)\n')
             log.flush()
 
@@ -414,22 +414,16 @@ def run_simulation(all_candidates: list, all_voters: list, current_status: Statu
         n_toppers = len(current_status.toppers)
         if n_toppers < 2:
             active_voters_indices = list(
-                itertools.filterfalse(lambda i: all_voters[i].most_recent_vote == current_status.toppers[0],
-                                      active_voters_indices))
+                filter(lambda i: all_voters[i].most_recent_vote != current_status.toppers[0], active_voters_indices))
         else:
             # This condition needs to be double checked for all corner cases
             active_voters_indices = list(
                 filter(lambda i: tie_breaking_rule.winning_probability(
-                    current_status.toppers, all_voters[i].most_recent_vote) < (1 / n_toppers),
-                       active_voters_indices))
+                    current_status.toppers, all_voters[i].most_recent_vote) < (1 / n_toppers), active_voters_indices))
 
-        # if NO active voters (corner case, where everyone is already satisfied with the same single candidate)
-        if not active_voters_indices:
-            return simulation_converged(current_status, scenario, write_converged=False, **streams)
-
-        status_changed = bool
+        status_changed = None
         # Select one voter randomly from Current active_voters_indices list
-        while len(active_voters_indices) > 0 and step < max_steps:  # Note that we check number of steps as well
+        while active_voters_indices and step < max_steps:  # Note that we check number of steps as well
             status_changed = False
             # pick a voter from ACTIVE voters
             index = rand.choice(active_voters_indices)
@@ -447,7 +441,7 @@ def run_simulation(all_candidates: list, all_voters: list, current_status: Statu
                 if isinstance(voter, LazyVoter):
                     abstaining_voters_indices.append(index)
 
-                if len(active_voters_indices):
+                if active_voters_indices:
                     out.write('\n')
                 else:
                     return simulation_converged(current_status, scenario, **streams)
@@ -456,21 +450,31 @@ def run_simulation(all_candidates: list, all_voters: list, current_status: Statu
             #     out.write('\n')
             else:
                 out.write("<-- enhancement\n")
-                current_status.votes[response.frm] = current_status.votes[response.frm] - 1
-                current_status.votes[response.to] = current_status.votes[response.to] + 1
+                # update ballot counts
+                current_status.votes[response.frm] -= 1
+                current_status.votes[response.to] += 1
+                # then reorder candidates
                 current_status.in_order()
 
                 scenario.append(current_status.copy())
                 status_changed = True
                 break
 
+        # if there were NO active voters (corner case, everyone is already satisfied with the same single candidate)
+        if status_changed is None:
+            print('Corner case', len(all_candidates), len(all_voters), flush=True)
+            return simulation_converged(current_status, scenario, write_converged=False, **streams)
+
+        # Now we know we entered and exited the inner loop and are sure the active voters list was not exhausted
         if status_changed:
-            # last step was successful
-            continue
+            # we broke from the inner loop because the last step was successful.
+            # Go back to the top of outer loop to continue based on the new status
+            continue  # No actual need for the keyword 'continue' here. It is just a place holder like 'pass'
         else:
-            # max steps exhausted
+            # we gracefully exited the inner loop because max steps was exhausted
             return simulation_not_converged(current_status, scenario, **streams)
     else:
+        # we gracefully exited the outer loop because max steps was exhausted
         return simulation_not_converged(current_status, scenario, **streams)
 
 
@@ -499,7 +503,8 @@ def sort_measurements(all_previously_run: dict):
     return all_measurements_by_candidates, all_measurements_by_voters
 
 
-def generate_graphs(all_measurements_by_candidates: dict, all_measurements_by_voters: dict, seeds_all_previously_run_count: int):
+def generate_graphs(all_measurements_by_candidates: dict, all_measurements_by_voters: dict,
+                    seeds_all_previously_run_count: int):
     # TODO remove MeasurementsSummary class and replace it with another loop level
     for curve_dict in all_measurements_by_candidates.items():
         n_candidates, curve_list = curve_dict[0], curve_dict[1]
@@ -517,13 +522,13 @@ def generate_graphs(all_measurements_by_candidates: dict, all_measurements_by_vo
     plt.xlabel('Voters')
     plt.show()
     # ret.percentage_winner_is_strong_condorcet /= len_it
-        # ret.percentage_winner_is_weak_condorcet /= len_it
-        # ret.percentage_truthful_winner_wins /= len_it
-        # ret.percentage_of_convergence /= len_it
-        # ret.averageTimeToConvergence /= len_it
-        # ret.averageSocial_welfare /= len_it
-        # ret.len_stable_states_sets /= len_it
-        # ret.len_winning_sets /= len_it
+    # ret.percentage_winner_is_weak_condorcet /= len_it
+    # ret.percentage_truthful_winner_wins /= len_it
+    # ret.percentage_of_convergence /= len_it
+    # ret.averageTimeToConvergence /= len_it
+    # ret.averageSocial_welfare /= len_it
+    # ret.len_stable_states_sets /= len_it
+    # ret.len_winning_sets /= len_it
 
 
 def plot_it(passed_in_array, label: str, n_candidates_range, n_voters_range):
@@ -587,7 +592,7 @@ def generate_candidates(n_candidates: int, rand: Random):
     all_candidates = []
     for i in range(n_candidates):
         # c: Candidate = Candidate(chr(b'A'[0]+i), i+1)
-        c: Candidate = Candidate(chr(b'A'[0]+i), rand.random())
+        c: Candidate = Candidate(chr(b'A'[0] + i), rand.random())
         all_candidates.append(c)
     return all_candidates
 
