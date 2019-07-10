@@ -2,6 +2,7 @@ import itertools
 import math
 from random import Random
 import matplotlib.pyplot as plt
+import numpy as np
 import sys
 import os
 from mpi4py import MPI
@@ -124,7 +125,7 @@ def aggregate_alleles(alleles: list, all_voters: list, profile: list, utility: U
         for voter in all_voters:
             welfare += utility.total_utility(voter.profile, final_status_toppers, tiebreakingrule)
 
-        # if not is_condorset_winner(profile, final_status.toppers[0]):
+        # if not is_condorcet _winner(profile, final_status.toppers[0]):
         #     others = profile[0].copy()
         #     others.remove(final_status.toppers[0])
         #     for other in others:
@@ -132,28 +133,30 @@ def aggregate_alleles(alleles: list, all_voters: list, profile: list, utility: U
         #             print("found", other, repr(profile))
 
         for winner in final_winner_s:
-            if not is_condorset_winner(profile, winner, week=True):
+            if not is_condorcet_winner(profile, winner, week=True):
                 break
         else:  # else of the (for loop), not of the (if statement)
             winner_is_weak_condorcet_counter += 1
             # test again for strong condorcet winner
             for winner in final_winner_s:
-                if not is_condorset_winner(profile, winner, week=False):
+                if not is_condorcet_winner(profile, winner, week=False):
                     break
             else:
                 winner_is_strong_condorcet_counter += 1
 
-    measurements.percentage_of_convergence = convergence_counter * 100.0 / len(steps_before_convergence)
-    measurements.averageTimeToConvergence = sum(steps_before_convergence) / len(steps_before_convergence)
-    measurements.averageSocial_welfare = welfare / len(alleles)
-    measurements.percentage_truthful_winner_wins = truthful_winner_wins_counter * 100 / len(alleles)
-    measurements.percentage_winner_is_weak_condorcet = winner_is_weak_condorcet_counter * 100 / len(alleles)
-    measurements.percentage_winner_is_strong_condorcet = winner_is_strong_condorcet_counter * 100 / len(alleles)
+    len_steps_before_convergence = len(steps_before_convergence)
+    len_alleles = len(alleles)
+    measurements.percentage_of_convergence = convergence_counter * 100.0 / len_steps_before_convergence
+    measurements.averageTimeToConvergence = sum(steps_before_convergence) / len_steps_before_convergence
+    measurements.averageSocial_welfare = welfare / len_alleles
+    measurements.percentage_truthful_winner_wins = truthful_winner_wins_counter * 100 / len_alleles
+    measurements.percentage_winner_is_weak_condorcet = winner_is_weak_condorcet_counter * 100 / len_alleles
+    measurements.percentage_winner_is_strong_condorcet = winner_is_strong_condorcet_counter * 100 / len_alleles
 
     return measurements
 
 
-def is_condorset_winner(profile: list, query: Candidate, week=True) -> bool:
+def is_condorcet_winner(profile: list, query: Candidate, week=True) -> bool:
     result = dict()
     strong_only = not week
     others = profile[0].copy()
@@ -232,7 +235,7 @@ Options:
     seeds__num_processors = comm.Get_size()
     seeds__all_previously_run_count = 0
     seeds__run_base = seed
-    seeds__run_size = 50
+    seeds__run_size = 40
 
     more_work = True
 
@@ -271,12 +274,14 @@ Options:
             # sort results
             all_measurements_by_candidates, all_measurements_by_voters = sort_measurements(all_previously_run)
 
-            # generate graph(s)
-            generate_graphs(all_measurements_by_candidates, all_measurements_by_voters, seeds__all_previously_run_count)
-
             # check for convergence
             more_work = not (run_converged(all_measurements_by_candidates, seeds__all_previously_run_count) or
                              run_converged(all_measurements_by_voters, seeds__all_previously_run_count))
+
+            if not more_work:
+                # generate graph(s)
+                generate_graphs(all_measurements_by_candidates, all_measurements_by_voters,
+                                seeds__all_previously_run_count)
         else:
             more_work = None
         more_work = comm.bcast(more_work, root=0)
@@ -292,6 +297,7 @@ Options:
         log.write("Done.\n")
         log.flush()
         log.close()
+        plt.show()
 
     # # print(average_time_to_convergence)
     # # print(list(zip(*average_time_to_convergence)))
@@ -301,17 +307,41 @@ Options:
     # plot_it(num_stable_states_sets, 'num stable states', n_candidates_range, n_voters_range)
 
 
-def run_converged(all_measurements_sorted: dict, seeds_all_previously_run_count: int, extremities=0.05, diff=0.07):
+def run_converged(all_measurements_sorted: dict, seeds_all_previously_run_count: int, max_sum_abs_diffs=0.15
+                  # , extremities=0.05
+                  ):
     # print('=============================')
+    if not seeds_all_previously_run_count:
+        return False
     for att_name in ['averageTimeToConvergence', 'percentage_truthful_winner_wins']:
         for level1 in all_measurements_sorted.items():
             for level2 in level1[1].items():
-                msrmnt_set = level2[1]
-                values = sorted([operator.attrgetter(att_name)(msrmnt) for msrmnt in msrmnt_set])
-                # print(level1[0], level2[0], att_name, values)
-    # print('-----------------------------')
-    # TODO Implement a real condition
-    return seeds_all_previously_run_count > 100
+                msrmnt_lst = level2[1]
+                old_values = sorted([operator.attrgetter(att_name)(msrmnt)
+                                     for msrmnt in msrmnt_lst[:seeds_all_previously_run_count]])
+                current_values = sorted([operator.attrgetter(att_name)(msrmnt) for msrmnt in msrmnt_lst])
+                # After much consideration, I simply decided to take the wider distribution and apply it
+                # to the smaller one (the subset) keeping the same bin boundaries.
+                # len_extremity = int(len(current_values) * extremities / 2)
+                # old_values_barred = current_values[len_extremity: -1-len_extremity]
+                # lbound = current_values[len_extremity]
+                # ubound = current_values[-1 - len_extremity]
+
+                current_hist, edges = np.histogram(current_values, bins='auto', density=True)
+                # print(level1[0], level2[0], att_name, current_values)
+                # print(edges, np.diff(edges), current_hist, flush=True)
+                old_hist, edges = np.histogram(old_values, bins=edges, density=True)
+                diff_edges = np.diff(edges)
+                # print(np.multiply(old_hist, diff_edges))
+                # print(np.multiply(current_hist, diff_edges))
+                subtract = np.subtract(np.multiply(old_hist, diff_edges), np.multiply(current_hist, diff_edges))
+                sum_abs_diffs = np.sum(abs(subtract))
+                # print(subtract, np.abs(subtract), sum_abs_diffs)
+                if sum_abs_diffs > max_sum_abs_diffs:
+                    return False
+    else:
+        print('============> Run Converged <============', flush=True)
+        return True
 
 
 def run_all_simulations_per_seed(args) -> list:
@@ -462,7 +492,7 @@ def run_simulation(all_candidates: list, all_voters: list, current_status: Statu
 
         # if there were NO active voters (corner case, everyone is already satisfied with the same single candidate)
         if status_changed is None:
-            print('Corner case', len(all_candidates), len(all_voters), flush=True)
+            # print('Corner case', len(all_candidates), len(all_voters), flush=True)
             return simulation_converged(current_status, scenario, write_converged=False, **streams)
 
         # Now we know we entered and exited the inner loop and are sure the active voters list was not exhausted
@@ -503,9 +533,9 @@ def sort_measurements(all_previously_run: dict):
     return all_measurements_by_candidates, all_measurements_by_voters
 
 
-def generate_graphs(all_measurements_by_candidates: dict, all_measurements_by_voters: dict,
-                    seeds_all_previously_run_count: int):
+def generate_graphs(all_measurements_by_candidates: dict, all_measurements_by_voters: dict, total_prev_count: int):
     # TODO remove MeasurementsSummary class and replace it with another loop level
+    plt.figure()
     for curve_dict in all_measurements_by_candidates.items():
         n_candidates, curve_list = curve_dict[0], curve_dict[1]
         lst = [(i[0],
@@ -520,7 +550,7 @@ def generate_graphs(all_measurements_by_candidates: dict, all_measurements_by_vo
     plt.title('averageTimeToConvergence')
     plt.legend()
     plt.xlabel('Voters')
-    plt.show()
+    plt.show(block=False)
     # ret.percentage_winner_is_strong_condorcet /= len_it
     # ret.percentage_winner_is_weak_condorcet /= len_it
     # ret.percentage_truthful_winner_wins /= len_it
