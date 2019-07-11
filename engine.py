@@ -49,43 +49,6 @@ class Measurements:
             f"percentage_winner_is_strong_condorcet = {self.percentage_winner_is_strong_condorcet}%"
 
 
-class MeasurementsSummary(Measurements):
-
-    def __init__(self):
-        super().__init__()
-        self.n_voters = self.n_candidates = self.averageSocial_welfare = self.averageTimeToConvergence = \
-            self.percentage_of_convergence = self.percentage_truthful_winner_wins = \
-            self.percentage_winner_is_weak_condorcet = self.percentage_winner_is_strong_condorcet = 0
-        self.len_winning_sets = self.len_stable_states_sets = 0
-
-    @staticmethod
-    def from_iterable(it, n_candidates, n_voters) -> 'MeasurementsSummary':
-        ret = MeasurementsSummary()
-        for i in iter(it):
-            assert i.n_candidates == n_candidates
-            assert i.n_voters == n_voters
-            ret.n_candidates = n_candidates
-            ret.n_voters = n_voters
-            ret.percentage_winner_is_weak_condorcet += i.percentage_winner_is_weak_condorcet
-            ret.percentage_winner_is_strong_condorcet += i.percentage_winner_is_strong_condorcet
-            ret.percentage_truthful_winner_wins += i.percentage_truthful_winner_wins
-            ret.percentage_of_convergence += i.percentage_of_convergence
-            ret.averageTimeToConvergence += i.averageTimeToConvergence
-            ret.averageSocial_welfare += i.averageSocial_welfare
-            ret.len_stable_states_sets += len(i.stable_states_sets)
-            ret.len_winning_sets += len(i.winning_sets)
-        len_it = len(it)
-        ret.percentage_winner_is_strong_condorcet /= len_it
-        ret.percentage_winner_is_weak_condorcet /= len_it
-        ret.percentage_truthful_winner_wins /= len_it
-        ret.percentage_of_convergence /= len_it
-        ret.averageTimeToConvergence /= len_it
-        ret.averageSocial_welfare /= len_it
-        ret.len_stable_states_sets /= len_it
-        ret.len_winning_sets /= len_it
-        return ret
-
-
 def aggregate_alleles(alleles: list, all_voters: list, profile: list, utility: Utility,
                       tiebreakingrule: TieBreakingRule) -> Measurements:
     measurements = Measurements()
@@ -129,7 +92,7 @@ def aggregate_alleles(alleles: list, all_voters: list, profile: list, utility: U
         #     others = profile[0].copy()
         #     others.remove(final_status.toppers[0])
         #     for other in others:
-        #         if is_condorset_winner(profile, other):
+        #         if is_condorcet_winner(profile, other):
         #             print("found", other, repr(profile))
 
         for winner in final_winner_s:
@@ -216,7 +179,7 @@ Options:
     # print(args)
     seed = int(args['--seed'])
     all_simulations_per_all_seeds = dict()
-    log = out = None
+    log = None
 
     comm = MPI.COMM_WORLD
     if comm.Get_rank() == 0:
@@ -236,6 +199,13 @@ Options:
     seeds__all_previously_run_count = 0
     seeds__run_base = seed
     seeds__run_size = 40
+
+    target_measurements = [
+        ('percentage_winner_is_weak_condorcet', False), ('percentage_winner_is_strong_condorcet', False),
+        ('percentage_truthful_winner_wins', False), ('percentage_of_convergence', False),
+        ('averageTimeToConvergence', False), ('averageSocial_welfare', False),
+        ('stable_states_sets', True), ('winning_sets', True)
+    ]
 
     more_work = True
 
@@ -275,13 +245,16 @@ Options:
             all_measurements_by_candidates, all_measurements_by_voters = sort_measurements(all_previously_run)
 
             # check for convergence
-            more_work = not (run_converged(all_measurements_by_candidates, seeds__all_previously_run_count) or
-                             run_converged(all_measurements_by_voters, seeds__all_previously_run_count))
+            more_work = not (
+                    run_converged(all_measurements_by_candidates, seeds__all_previously_run_count, target_measurements)
+                    and run_converged(all_measurements_by_voters, seeds__all_previously_run_count, target_measurements)
+            )
 
             if not more_work:
                 # generate graph(s)
-                generate_graphs(all_measurements_by_candidates, all_measurements_by_voters,
-                                seeds__all_previously_run_count)
+                generate_graphs(all_measurements_by_candidates,
+                                # all_measurements_by_voters, seeds__all_previously_run_count,
+                                target_measurements)
         else:
             more_work = None
         more_work = comm.bcast(more_work, root=0)
@@ -307,19 +280,34 @@ Options:
     # plot_it(num_stable_states_sets, 'num stable states', n_candidates_range, n_voters_range)
 
 
-def run_converged(all_measurements_sorted: dict, seeds_all_previously_run_count: int, max_sum_abs_diffs=0.15
+def run_converged(all_measurements_sorted: dict, seeds_all_previously_run_count: int, target_measurements: list,
+                  max_sum_abs_diffs=0.15
                   # , extremities=0.05
-                  ):
+                  ) -> bool:
     # print('=============================')
     if not seeds_all_previously_run_count:
         return False
-    for att_name in ['averageTimeToConvergence', 'percentage_truthful_winner_wins']:
+    for attr_name, len_attr in target_measurements:
         for level1 in all_measurements_sorted.items():
             for level2 in level1[1].items():
                 msrmnt_lst = level2[1]
-                old_values = sorted([operator.attrgetter(att_name)(msrmnt)
-                                     for msrmnt in msrmnt_lst[:seeds_all_previously_run_count]])
-                current_values = sorted([operator.attrgetter(att_name)(msrmnt) for msrmnt in msrmnt_lst])
+                # # no need for sotred() anymore. TODO To be deleted
+                # old_values = sorted([
+                #     len(operator.attrgetter(attr_name)(msrmnt)) if len_attr else operator.attrgetter(attr_name)(msrmnt)
+                #     for msrmnt in msrmnt_lst[:seeds_all_previously_run_count]
+                # ])
+                # current_values = sorted([
+                #     len(operator.attrgetter(attr_name)(msrmnt)) if len_attr else operator.attrgetter(attr_name)(msrmnt)
+                #     for msrmnt in msrmnt_lst
+                # ])
+                old_values = [
+                    len(operator.attrgetter(attr_name)(msrmnt)) if len_attr else operator.attrgetter(attr_name)(msrmnt)
+                    for msrmnt in msrmnt_lst[:seeds_all_previously_run_count]
+                ]
+                current_values = [
+                    len(operator.attrgetter(attr_name)(msrmnt)) if len_attr else operator.attrgetter(attr_name)(msrmnt)
+                    for msrmnt in msrmnt_lst
+                ]
                 # After much consideration, I simply decided to take the wider distribution and apply it
                 # to the smaller one (the subset) keeping the same bin boundaries.
                 # len_extremity = int(len(current_values) * extremities / 2)
@@ -328,7 +316,7 @@ def run_converged(all_measurements_sorted: dict, seeds_all_previously_run_count:
                 # ubound = current_values[-1 - len_extremity]
 
                 current_hist, edges = np.histogram(current_values, bins='auto', density=True)
-                # print(level1[0], level2[0], att_name, current_values)
+                # print(level1[0], level2[0], attr_name, current_values)
                 # print(edges, np.diff(edges), current_hist, flush=True)
                 old_hist, edges = np.histogram(old_values, bins=edges, density=True)
                 diff_edges = np.diff(edges)
@@ -533,32 +521,32 @@ def sort_measurements(all_previously_run: dict):
     return all_measurements_by_candidates, all_measurements_by_voters
 
 
-def generate_graphs(all_measurements_by_candidates: dict, all_measurements_by_voters: dict, total_prev_count: int):
-    # TODO remove MeasurementsSummary class and replace it with another loop level
-    plt.figure()
-    for curve_dict in all_measurements_by_candidates.items():
-        n_candidates, curve_list = curve_dict[0], curve_dict[1]
-        lst = [(i[0],
-                operator.attrgetter('averageTimeToConvergence')(
-                    MeasurementsSummary.from_iterable(i[1], n_candidates, i[0])))
-               for i in curve_list.items()]
-        print(n_candidates, lst)
-        separate_x_y = list(zip(*lst))
-        print("separate: ", separate_x_y)
-        if separate_x_y:
-            plt.plot(separate_x_y[0], separate_x_y[1], 'o-', label=f'candidates = {n_candidates}')
-    plt.title('averageTimeToConvergence')
-    plt.legend()
-    plt.xlabel('Voters')
-    plt.show(block=False)
-    # ret.percentage_winner_is_strong_condorcet /= len_it
-    # ret.percentage_winner_is_weak_condorcet /= len_it
-    # ret.percentage_truthful_winner_wins /= len_it
-    # ret.percentage_of_convergence /= len_it
-    # ret.averageTimeToConvergence /= len_it
-    # ret.averageSocial_welfare /= len_it
-    # ret.len_stable_states_sets /= len_it
-    # ret.len_winning_sets /= len_it
+def generate_graphs(all_measurements_by_candidates: dict,
+                    # all_measurements_by_voters: dict, total_prev_count: int,
+                    target_measurements: list):
+    for attr_name, len_attr in target_measurements:
+        plt.figure()
+
+        for candidates_dict in all_measurements_by_candidates.items():
+            n_candidates, voters_dict = candidates_dict[0], candidates_dict[1]
+            lst = []
+            for n_voters, measurements_lst in voters_dict.items():
+                attr_summary = np.average([
+                    len(operator.attrgetter(attr_name)(msrmnt)) if len_attr else operator.attrgetter(attr_name)(msrmnt)
+                    for msrmnt in measurements_lst])
+                lst.append((n_voters, attr_summary))
+            print(n_candidates, lst)
+            separate_x_y = list(zip(*lst))
+            print("separate: ", separate_x_y)
+            if separate_x_y:
+                plt.plot(separate_x_y[0], separate_x_y[1], 'o-', label=f'candidates = {n_candidates}')
+        title = attr_name.replace('_', ' ')
+        if len_attr:
+            title = 'len of '+title
+        plt.title(title)
+        plt.legend()
+        plt.xlabel('Voters')
+        plt.show(block=False)
 
 
 def plot_it(passed_in_array, label: str, n_candidates_range, n_voters_range):
