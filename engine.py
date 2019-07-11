@@ -158,19 +158,23 @@ Options:
   -C, --cmax=CMAX   Max number of candidates    [Default: 7]
   -v, --vmin=VMIN   Min number of Voters        [Default: cmin]
   -V, --vmax=VMAX   Max number of Voters        [Default: 12]
-  -l, --log=LFILE   Log file (if ommitted or -, output to stdout)   [Default: -]
-  -o, --out-folder=OFOLDER      Output folder where all scenarios are written [Default: ./out]
-  -u, --utility=UTILITY         User Utility function (borda | expo)[Default: borda]
-  -p, --preference=PREFERENCE   How a voter forms his ballot 
-                                order (single-peaked | general)     [Default: single-peaked]
+  -l, --log=LFILE   Log file (if ommitted or -, output to stdout)               [Default: -]
+  -o, --out-folder=OFOLDER      Output folder where all scenarios are written   [Default: ./out]
+  -u, --utility=UTILITY         User Utility function (borda | expo)            [Default: borda]
+  -p, --preference=PREFERENCE   How a voter forms his ballot order 
+                                (single-peaked | general)                       [Default: single-peaked]
+  --conv-threshold=THRESHOLD    Threshold of similarity of different profiles 
+                                sampling before considering the curve converged [Default: 0.08]
   -t, --tiebreakingrule=TIEBREAKINGRULE     How to behave in cases of draws 
-                                (lexicographic | random)            [Default: lexicographic]
-  --voters=VOTERS       Type of voters (general | truthful | lazy)  [Default: general]
-  -s, --seed=SEED       Randomization seed     [Default: 12345]
+                                (lexicographic | random)                        [Default: lexicographic]
+  -i, --initial-run-size=SIZE   Initial number of runs before testing for 
+                                convergence                                     [Default: 100]
+  --voters=VOTERS       Type of voters (general | truthful | lazy)              [Default: general]
+  -s, --seed=SEED       Randomization seed      [Default: 12345]
   -h, --help            Print the help screen
   --version             Prints the version and exits
-  BASE                  The base               [default: 2]
-  EXPO_STEP             The exponent increment [Default: 1]
+  BASE                  The base                [default: 2]
+  EXPO_STEP             The exponent increment  [Default: 1]
 
 
 """
@@ -198,7 +202,7 @@ Options:
     seeds__num_processors = comm.Get_size()
     seeds__all_previously_run_count = 0
     seeds__run_base = seed
-    seeds__run_size = 40
+    seeds__run_size = int(args['--initial-run-size'])
 
     target_measurements = [
         ('percentage_winner_is_weak_condorcet', False), ('percentage_winner_is_strong_condorcet', False),
@@ -246,8 +250,11 @@ Options:
 
             # check for convergence
             more_work = not (
-                    run_converged(all_measurements_by_candidates, seeds__all_previously_run_count, target_measurements)
-                    and run_converged(all_measurements_by_voters, seeds__all_previously_run_count, target_measurements)
+                    run_converged(all_measurements_by_candidates, seeds__all_previously_run_count, target_measurements,
+                                  max_sum_abs_diffs=float(args['--conv-threshold']))
+                    and
+                    run_converged(all_measurements_by_voters, seeds__all_previously_run_count, target_measurements,
+                                  max_sum_abs_diffs=float(args['--conv-threshold']))
             )
 
             if not more_work:
@@ -505,7 +512,7 @@ def generate_graphs(all_measurements_by_candidates: dict, all_measurements_by_vo
 
 
 def generate_graphs_one_side(all_measurements_by_candidates, target_measurements, y_label: str, x_label: str,
-                             mark:str = 'o-') -> None:
+                             mark: str = 'o-') -> None:
     for attr_name, len_attr in target_measurements:
         plt.figure()
 
