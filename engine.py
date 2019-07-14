@@ -109,9 +109,11 @@ def aggregate_alleles(alleles: list, all_voters: list, profile: list, utility: U
 
     len_steps_before_convergence = len(steps_before_convergence)
     len_alleles = len(alleles)
-    measurements.percentage_of_convergence = convergence_counter * 100.0 / len_steps_before_convergence
-    measurements.average_time_to_convergence = sum(steps_before_convergence) / len_steps_before_convergence
-    measurements.average_social_welfare = welfare / len_alleles
+    measurements.percentage_of_convergence = convergence_counter * 100.0 / len_steps_before_convergence \
+        if len_steps_before_convergence else 100
+    measurements.average_time_to_convergence = sum(steps_before_convergence) / len_steps_before_convergence \
+        if len_steps_before_convergence else 0
+    measurements.average_social_welfare = welfare / len_alleles  # TODO Discuss
     measurements.percentage_truthful_winner_wins = truthful_winner_wins_counter * 100 / len_alleles
     measurements.percentage_winner_is_weak_condorcet = winner_is_weak_condorcet_counter * 100 / len_alleles
     measurements.percentage_winner_is_strong_condorcet = winner_is_strong_condorcet_counter * 100 / len_alleles
@@ -551,7 +553,7 @@ def simulation_converged(last_status: Status, scenario: list, write_converged=Tr
 
 def simulation_not_converged(last_status: Status, scenario: list, **streams) -> list:
     out = streams['out']
-    out.write(last_status, "No convergence\n")
+    out.write(f'{last_status} No convergence\n')
     out.flush()
     scenario.append(last_status.copy())
     scenario.append(False)
