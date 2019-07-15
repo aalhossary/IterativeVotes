@@ -106,7 +106,7 @@ class Voter:
             VoterTypes.truthful.name: cls.__new__(TruthfulVoter),
             VoterTypes.lazy.name: cls.__new__(LazyVoter),
         }.get(voter_type, None)
-        cls.__init__(new, position, utility)
+        new.__class__.__init__(new, position, utility)
         return new
 
     def get_truthful_vote(self) -> Candidate:
@@ -217,9 +217,8 @@ class LazyVoter(Voter):
             return self.abstain_event
         update = super(LazyVoter, self).vote(current_state, tie_breaking_rule)
         if update.to is None:
+            update.frm = None
             self.abstain = True
-            update.to = Candidate.NONE
-            # update = self.abstain_event
         return update
 
 

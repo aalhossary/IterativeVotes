@@ -3,7 +3,6 @@
 
 class Candidate:
 
-    NONE = None
     __doc__ = "One of alternatives to be selected in the voting process"
 
     def __init__(self, name='', position=None):
@@ -16,6 +15,8 @@ class Candidate:
     def __eq__(self, other):
         if self is other:
             return True
+        if other is None:
+            return False
         return (self.position, self.name) == (other.position, other.name)
 
     def __lt__(self, other):
@@ -30,9 +31,6 @@ class Candidate:
         else:
             # Assume other is a number (representing a position)
             return abs(self.position - other)
-
-
-Candidate.NONE = Candidate()
 
 
 if __name__ == '__main__':

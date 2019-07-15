@@ -333,8 +333,8 @@ def run_all_simulations_per_seed(args) -> list:
     log = args['log']
     utility = {
         'borda': BordaUtility(),
-        'expo': ExpoUtility(base=args.get('<BASE>', 2),
-                            exponent_step=args.get('<EXPO_STEP>', 1)),
+        'expo': ExpoUtility(base=args['<BASE>'] if args['<BASE>'] else 2,
+                            exponent_step=args['<EXPO_STEP>'] if args['<EXPO_STEP>'] else  1),
     }.get(args['--utility'], None)
     cmin = int(args['--cmin'])
     cmax = int(args['--cmax'])
@@ -445,6 +445,7 @@ def run_simulation(all_candidates: list, all_voters: list, current_status: Statu
                 active_voters_indices.remove(index)
                 if isinstance(voter, LazyVoter):
                     abstaining_voters_indices.append(index)
+                    out.write('\tAbstain\n')
 
                 if active_voters_indices:
                     out.write('\n')
