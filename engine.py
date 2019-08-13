@@ -13,6 +13,7 @@ from ntu.votes.profilepreference import *
 from ntu.votes.tiebreaking import *
 from ntu.votes.utility import *
 from ntu.votes.voter import *
+from helper import *
 
 
 class Measurements:
@@ -160,6 +161,7 @@ Options:
   -V, --vmax=VMAX   Max number of Voters        [Default: 12]
   -l, --log=LFILE   Log file (if ommitted or -, output to stdout)               [Default: -]
   -o, --out-folder=OFOLDER      Output folder where all scenarios are written   [Default: ./out]
+  -r, --random-search           Don't perform exhaustive search of profiles     [Default: Yes]
   -u, --utility=UTILITY         User Utility function (borda | expo)            [Default: borda]
   -p, --preference=PREFERENCE   How a voter forms his ballot order 
                                 (single-peaked | general)                       [Default: single-peaked]
@@ -196,6 +198,11 @@ Options:
                 if dirname != '':  # If just a file name without a folder
                     os.makedirs(dirname, exist_ok=True)
             log = open(log_arg, 'w')
+
+    exhaustive = not bool(args['--random-search'])
+    # print('exhaustive =', exhaustive)
+    if exhaustive and 'general' == (args.get('--preference', None)):
+        raise TypeError('Exhaustive search can be performed only with single-peaked preference (till now).')
 
     all_previously_run = dict()  # To hold all runs from all seeds simulated on all threads
     seeds__rank = comm.Get_rank()
@@ -329,6 +336,7 @@ def run_all_simulations_per_seed(args) -> list:
     """
     out = args['out']
     log = args['log']
+    assigned_seed = args['assigned_seed']
     utility = {
         'borda': BordaUtility(),
         'expo': ExpoUtility(base=args.get('<BASE>', 2),
@@ -339,7 +347,8 @@ def run_all_simulations_per_seed(args) -> list:
     # vmin = int(args['--vmin'])
     vmin = cmin if 'cmin' == args['--vmin'] else int(args['--vmin'])
     vmax = int(args['--vmax'])
-    rand = random.Random(args['assigned_seed'])
+    rand = random.Random(assigned_seed)
+    exhaustive = not bool(args['--random-search'])  # duplicate code of the outer line
     preference = {
         'single-peaked': SinglePeakedProfilePreference(),
         'general': GeneralProfilePreference(rand),
@@ -352,6 +361,12 @@ def run_all_simulations_per_seed(args) -> list:
     all_profiles_measurements = []
     n_candidates_range = range(cmin, cmax + 1)
     for n_candidates in n_candidates_range:
+        # Generate deterministic list of candidates
+        terminal_gap = False
+        inter_gaps = False
+        all_candidates = generate_candidates(n_candidates, exhaustive, rand, terminal_gap, inter_gaps)
+        # print(n_candidates, all_candidates, flush=True)
+
         # number of n_candidates <= n_voters <= 12
         n_voters_range = range(max(vmin, n_candidates), vmax + 1)
         for n_voters in n_voters_range:
@@ -361,9 +376,21 @@ def run_all_simulations_per_seed(args) -> list:
             out.write(f'\n------------ voters = {n_voters}, Candidates = {n_candidates}-------------------\n')
             out.flush()
             # log.write(f'\n------------ voters = {n_voters}, Candidates = {n_candidates}-------------------\n')
-            all_candidates = generate_candidates(n_candidates, rand)
-            # print(all_candidates, flush=True)
-            all_voters = generate_voters(n_voters, args['--voters'], utility, rand)
+
+            # Generate deterministic list of voters
+            # adjust bins acc to terminal and internal gaps
+            terminal = 1 if terminal_gap else 0
+            delta = 2 if inter_gaps else 1
+            last_bin = terminal + (n_candidates * delta)
+            if terminal and not inter_gaps:
+                last_bin += 1
+            deterministic_list_of_voters_choices = permute_identityless(list(range(last_bin)), n_voters, False, list())
+            # print('len = ', len(deterministic_list_of_voters_choices), deterministic_list_of_voters_choices, flush=True)
+
+            # Use it :)
+            determinant = deterministic_list_of_voters_choices[assigned_seed % len(deterministic_list_of_voters_choices)] if exhaustive else rand
+
+            all_voters = generate_voters(n_voters, args['--voters'], utility, determinant)
             # print(all_voters, flush=True)
 
             # voters build their preferences
@@ -373,7 +400,10 @@ def run_all_simulations_per_seed(args) -> list:
             profile = [voter.getprofile() for voter in all_voters]
             initial_status = Status.from_profile(profile)
 
-            alleles = []
+            # print(n_candidates, n_voters, assigned_seed, all_voters, flush=True)
+            # continue  # FIXME for development purpose only
+
+            alleles = []  # Alleles are scenarios
             for run in range(50):
                 streams = {'log': log, 'out': out}
                 scenario = run_simulation(all_candidates, all_voters, initial_status, tie_breaking_rule, rand,
@@ -558,21 +588,37 @@ def simulation_not_converged(last_status: Status, scenario: list, **streams) -> 
     return scenario
 
 
-def generate_voters(n_voters: int, voter_type: str, utility: Utility, rand: Random):
+def generate_voters(n_voters: int, voter_type: str, utility: Utility, determinant):
     all_voters = []
-    for i in range(n_voters):
-        # v: Voter = Voter.make_voter(voter_type, rand.randrange(positions_range), utility)
-        v: Voter = Voter.make_voter(voter_type, rand.random(), utility)
-        all_voters.append(v)
+    exhaustive = isinstance(determinant, list)
+    if exhaustive:
+        deterministic_list_of_voters_choices: list = determinant
+        for i in range(n_voters):
+            v: Voter = Voter.make_voter(voter_type, deterministic_list_of_voters_choices[i], utility)
+            all_voters.append(v)
+            # raise NotImplementedError("Not yet implemented")
+    else:
+        for i in range(n_voters):
+            rand: Random = determinant
+            # v: Voter = Voter.make_voter(voter_type, rand.randrange(positions_range), utility)
+            v: Voter = Voter.make_voter(voter_type, rand.random(), utility)
+            all_voters.append(v)
     return all_voters
 
 
-def generate_candidates(n_candidates: int, rand: Random):
+def generate_candidates(n_candidates: int, exhaustive: bool, rand: Random, terminal_gap=False, inter_gaps=True):
     all_candidates = []
-    for i in range(n_candidates):
-        # c: Candidate = Candidate(chr(b'A'[0] + i), i+1)
-        c: Candidate = Candidate(chr(b'A'[0] + i), rand.random())
-        all_candidates.append(c)
+    if exhaustive:
+        offset = 1 if terminal_gap else 0
+        delta = 2 if inter_gaps else 1
+        for i in range(n_candidates):
+            c: Candidate = Candidate(chr(b'A'[0] + i), offset + (i * delta))
+            all_candidates.append(c)
+    else:
+        for i in range(n_candidates):
+            # c: Candidate = Candidate(chr(b'A'[0] + i), i+1)
+            c: Candidate = Candidate(chr(b'A'[0] + i), rand.random())
+            all_candidates.append(c)
     return all_candidates
 
 
