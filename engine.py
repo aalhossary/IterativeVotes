@@ -268,7 +268,8 @@ Options:
 
             if not more_work:
                 # generate graph(s)
-                generate_graphs(all_measurements_by_candidates, all_measurements_by_voters, target_measurements)
+                generate_graphs(all_measurements_by_candidates, all_measurements_by_voters, target_measurements,
+                                args['--out-folder'])
         else:
             more_work = None
         more_work = comm.bcast(more_work, root=0)
@@ -539,13 +540,14 @@ def sort_measurements(all_previously_run: dict):
     return all_measurements_by_candidates, all_measurements_by_voters
 
 
-def generate_graphs(all_measurements_by_candidates: dict, all_measurements_by_voters: dict, target_measurements: list):
-    generate_graphs_one_side(all_measurements_by_candidates, target_measurements, 'Candidates', 'Voters', mark='o-')
-    generate_graphs_one_side(all_measurements_by_voters, target_measurements, 'Voters', 'Candidates', mark='^-')
+def generate_graphs(all_measurements_by_candidates: dict, all_measurements_by_voters: dict, target_measurements: list,
+                    out_dir: str):
+    generate_graphs_one_side(all_measurements_by_candidates, target_measurements, 'Candidates', 'Voters', 'o-', out_dir)
+    generate_graphs_one_side(all_measurements_by_voters, target_measurements, 'Voters', 'Candidates', '^-', out_dir)
 
 
 def generate_graphs_one_side(all_measurements_by_candidates, target_measurements, y_label: str, x_label: str,
-                             mark: str = 'o-') -> None:
+                             mark: str, out_dir: str = './') -> None:
     for attr_name, len_attr in target_measurements:
         plt.figure()
 
@@ -562,13 +564,17 @@ def generate_graphs_one_side(all_measurements_by_candidates, target_measurements
             print("separate: ", separate_x_y)
             if separate_x_y:
                 plt.plot(separate_x_y[0], separate_x_y[1], mark, label=f'{y_label} = {n_level1}')
+
         title = attr_name.replace('_', ' ')
         if len_attr:
             title = 'len of ' + title
         plt.title(title)
         plt.legend()
         plt.xlabel(x_label)
-        plt.show(block=False)
+
+        filename = f'{out_dir}/{attr_name} different {y_label}.png'
+        plt.savefig(filename, trnsparent=True)
+        # plt.show(block=False)
 
 
 def simulation_converged(last_status: Status, scenario: list, write_converged=True, **streams) -> list:
