@@ -366,7 +366,7 @@ def run_all_simulations_per_seed(args) -> list:
     for n_candidates in n_candidates_range:
         # Generate deterministic list of candidates
         terminal_gap = False
-        inter_gaps = False
+        inter_gaps = True
         all_candidates = generate_candidates(n_candidates, exhaustive, rand, terminal_gap, inter_gaps)
         # print(n_candidates, all_candidates, flush=True)
 
@@ -388,7 +388,7 @@ def run_all_simulations_per_seed(args) -> list:
             if terminal and not inter_gaps:
                 last_bin += 1
             deterministic_list_of_voters_choices = permute_identityless(list(range(last_bin)), n_voters, False, list())
-            # print('len = ', len(deterministic_list_of_voters_choices), deterministic_list_of_voters_choices, flush=True)
+            print('len = ', len(deterministic_list_of_voters_choices), deterministic_list_of_voters_choices, flush=True)
 
             # Use it :)
             determinant = deterministic_list_of_voters_choices[assigned_seed % len(deterministic_list_of_voters_choices)] if exhaustive else rand
@@ -405,20 +405,25 @@ def run_all_simulations_per_seed(args) -> list:
 
             # print(n_candidates, n_voters, assigned_seed, all_voters, flush=True)
             # continue  # FIXME for development purpose only
-
-            alleles = []  # Alleles are scenarios
-            for run in range(50):
-                streams = {'log': log, 'out': out}
-                scenario = run_simulation(all_candidates, all_voters, initial_status, tie_breaking_rule, rand,
-                                          **streams)
-                alleles.append(scenario)
-            measurements = aggregate_alleles(alleles, all_voters, profile, utility, tie_breaking_rule)
-            # log.write("-------measurements\n")
-            # log.write(str(measurements)+'\n')
-            # log.write("-------\n")
-
+            streams = {'log': log, 'out': out}
+            measurements = run_simulation_alleles(all_candidates, all_voters, initial_status, profile, rand, streams,
+                                                  tie_breaking_rule, utility)
             all_profiles_measurements.append(measurements)
     return all_profiles_measurements
+
+
+def run_simulation_alleles(all_candidates, all_voters, initial_status, profile, rand, streams, tie_breaking_rule,
+                           utility):
+    alleles = []  # Alleles are scenarios
+    for run in range(50):
+        scenario = run_simulation(all_candidates, all_voters, initial_status, tie_breaking_rule, rand,
+                                  **streams)
+        alleles.append(scenario)
+    measurements = aggregate_alleles(alleles, all_voters, profile, utility, tie_breaking_rule)
+    # log.write("-------measurements\n")
+    # log.write(str(measurements)+'\n')
+    # log.write("-------\n")
+    return measurements
 
 
 def run_simulation(all_candidates: list, all_voters: list, current_status: Status, tie_breaking_rule: TieBreakingRule,
