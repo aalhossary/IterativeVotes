@@ -1,6 +1,9 @@
 import itertools
 import math
+# import random
 from random import Random
+from typing import Union
+
 import matplotlib.pyplot as plt
 import numpy as np
 import sys
@@ -8,12 +11,16 @@ import os
 from mpi4py import MPI
 
 from docopt import docopt
+from helper import permute_identityless, __permute_bin_loads
 from ntu.votes.candidate import *
 from ntu.votes.profilepreference import *
+from ntu.votes.profilepreference import SinglePeakedProfilePreference, GeneralProfilePreference
 from ntu.votes.tiebreaking import *
-from ntu.votes.utility import *
+from ntu.votes.tiebreaking import LexicographicTieBreakingRule, RandomTieBreakingRule
+# from ntu.votes.utility import *
+from ntu.votes.utility import BordaUtility, ExpoUtility
 from ntu.votes.voter import *
-from helper import *
+from ntu.votes.voter import Status
 
 
 class Measurements:
@@ -157,10 +164,10 @@ Usage:
 
 
 Options:
-  -c, --cmin=CMIN   Min number of candidates    [Default: 5]
+  -c, --cmin=CMIN   Min number of candidates    [Default: 3]
   -C, --cmax=CMAX   Max number of candidates    [Default: 7]
   -v, --vmin=VMIN   Min number of Voters        [Default: cmin]
-  -V, --vmax=VMAX   Max number of Voters        [Default: 12]
+  -V, --vmax=VMAX   Max number of Voters        [Default: 8]
   -l, --log=LFILE   Log file (if ommitted or -, output to stdout)               [Default: -]
   -o, --out-folder=OFOLDER      Output folder where all scenarios are written   [Default: ./out]
   -r, --random-search           Don't perform exhaustive search of profiles     [Default: Yes]
@@ -190,7 +197,10 @@ Options:
     log = None
 
     comm = MPI.COMM_WORLD
-    if comm.Get_rank() == 0:
+
+    rank = comm.Get_rank()
+    master = rank == 0
+    if master:
         log_arg = args['--log']
         if log_arg == '-':
             log = sys.stdout
@@ -206,19 +216,140 @@ Options:
     if exhaustive and 'general' == (args.get('--preference', None)):
         raise TypeError('Exhaustive search can be performed only with single-peaked preference (till now).')
 
-    all_previously_run = dict()  # To hold all runs from all seeds simulated on all threads
-    seeds__rank = comm.Get_rank()
-    seeds__num_processors = comm.Get_size()
-    seeds__all_previously_run_count = 0
-    seeds__run_base = seed
-    seeds__run_size = int(args['--initial-run-size'])
-
     target_measurements = [
         ('percentage_winner_is_weak_condorcet', False), ('percentage_winner_is_strong_condorcet', False),
         ('percentage_truthful_winner_wins', False), ('percentage_of_convergence', False),
         ('average_time_to_convergence', False), ('average_social_welfare', False),
         ('stable_states_sets', True), ('winning_sets', True)
     ]
+
+    utility = {
+        'borda': BordaUtility(),
+        'expo': ExpoUtility(base=args['<BASE>'] if args['<BASE>'] else 2,
+                            exponent_step=args['<EXPO_STEP>'] if args['<EXPO_STEP>'] else 1),
+    }.get(args['--utility'], None)
+    c_min = int(args['--cmin'])
+    c_max = int(args['--cmax'])
+    v_min = c_min if 'cmin' == args['--vmin'] else int(args['--vmin'])
+    v_max = int(args['--vmax'])
+
+    rand = random.Random(seed)
+    # Note that rand may be updated with new seeds later
+
+    preference = {
+        'single-peaked': SinglePeakedProfilePreference(),
+        'general': GeneralProfilePreference(rand),
+    }.get(args['--preference'], None)
+    tie_breaking_rule = {
+        'lexicographic': LexicographicTieBreakingRule(),
+        'random': RandomTieBreakingRule(rand),
+    }.get(args['--tiebreakingrule'], None)
+    # print(utility, preference, tie_breaking_rule)
+
+    # n_candidates --> non redundant candidates positions permutations --> non redundant voter positions
+    n_candidates_range = range(c_min, c_max + 1)
+    candidate_positions_permutations_data_per_n_candidates_s = dict()
+    for n_candidates in n_candidates_range:
+        # Generate deterministic list of candidates
+        n_bins = math.ceil(n_candidates * (n_candidates - 1) / 2)
+        candidate_positions_permutations = __permute_bin_loads(n_bins, n_candidates, 1, 0, [], set(), [])
+        nr_candidate_positions_permutations = []
+        # filter redundant candidates positions permutations
+        profiles_per_candidate_positions_permutation = set()
+        nr_voter_positions_per_candidate_permutation_s = dict()
+        dummy_count = 0
+        for candidate_positions_permutation in candidate_positions_permutations:
+            dummy_all_candidates = generate_candidates(n_candidates, exhaustive, candidate_positions_permutation)
+            nr_voter_profiles = set()
+            nr_voter_positions_per_candidate_permutation = []
+            for position in range(n_bins):
+                dummy_voter = Voter(position, utility)
+                dummy_voter.build_profile(dummy_all_candidates, preference)
+                voter_profile_as_names = tuple(c.name for c in dummy_voter.getprofile())
+                if voter_profile_as_names not in nr_voter_profiles:
+                    nr_voter_profiles.add(voter_profile_as_names)
+                    nr_voter_positions_per_candidate_permutation.append(position)
+            nr_voter_profiles_fs = frozenset(nr_voter_profiles)
+
+            if nr_voter_profiles_fs in profiles_per_candidate_positions_permutation:
+                dummy_count += 1
+                # print('\n', candidate_positions_permutation, 'Redundant', flush=True)
+            else:
+                profiles_per_candidate_positions_permutation.add(nr_voter_profiles_fs)
+                nr_candidate_positions_permutations.append(candidate_positions_permutation)
+                print(dummy_all_candidates, end=' ', flush=True)
+
+            nr_voter_positions_per_candidate_permutation_s[candidate_positions_permutation] = \
+                nr_voter_positions_per_candidate_permutation
+
+        print(f'\nDistinct profiles per candidate positions permutation = {len(profiles_per_candidate_positions_permutation)}: {profiles_per_candidate_positions_permutation}')
+        print(f'Redundant = {dummy_count}', flush=True)
+        candidate_positions_permutations = nr_candidate_positions_permutations
+        nr_voter_positions_per_candidate_permutation_s = {itm[0]: itm[1] for itm in
+                                                          nr_voter_positions_per_candidate_permutation_s.items()
+                                                          if itm[0] in candidate_positions_permutations}
+        print(candidate_positions_permutations, flush=True)
+        print('------------------------', flush=True)
+        # input('Press enter!')
+
+        candidate_positions_permutations_data_per_n_candidates_s[n_candidates] = \
+            nr_voter_positions_per_candidate_permutation_s
+
+    # ==================== Simulation? =====================================
+
+    # The process should go this way:
+    # points (Candidates --> Voters) --> position permutations (candidates --> voters) --> work (precision% --> seeds)
+
+    more_points = True  # Review these variables
+    more_work_on_current_point = True
+    all_profiles_measurements = []
+    for n_candidates in n_candidates_range:
+        # number of n_candidates <= n_balls <= 12
+        n_voters_range = range(max(v_min, n_candidates), v_max + 1)
+        for n_voters in n_voters_range:
+            if n_voters % 2:
+                continue
+            log.write(f'\n------------ Voters = {n_voters}, Candidates = {n_candidates}-------------------\n')
+            log.flush()
+
+            candidate_permutations_and_its_data: dict = \
+                candidate_positions_permutations_data_per_n_candidates_s[n_candidates]
+            for (candidate_permutation, nr_voter_positions_s) in candidate_permutations_and_its_data.items():
+                candidates_determinant = candidate_permutation if exhaustive else rand
+                all_candidates = generate_candidates(n_candidates, exhaustive, candidates_determinant)
+                for nr_voter_positions in nr_voter_positions_s:
+                    # Generate deterministic list of voters
+                    deterministic_list_of_voters_position = permute_identityless(nr_voter_positions, n_voters)
+                    print('len = ', len(deterministic_list_of_voters_position), deterministic_list_of_voters_position,
+                          flush=True)
+                    # Use it :)
+                    voters_determinant = deterministic_list_of_voters_position if exhaustive else rand
+                    all_voters = generate_voters(n_voters, args['--voters'], utility, voters_determinant)
+                    # print(all_voters, flush=True)
+
+                    # voters build their preferences
+                    for voter in all_voters:
+                        voter.build_profile(all_candidates, preference)
+                    # collective profile
+                    voter_profile = [voter.getprofile() for voter in all_voters]
+                    initial_status = Status.from_profile(voter_profile)
+
+    # TODO Add search for saved points in local folder
+    # TODO Add more work for more precision
+    # TODO Add parallelling work on different processors
+    # TODO take the rest from the code below with minimal change
+
+
+
+
+
+
+    all_previously_run = dict()  # To hold all runs from all seeds simulated on all threads
+    seeds__rank = comm.Get_rank()
+    seeds__num_processors = comm.Get_size()
+    seeds__all_previously_run_count = 0
+    seeds__run_base = seed
+    seeds__run_size = int(args['--initial-run-size'])
 
     more_work = True
 
@@ -227,9 +358,9 @@ Options:
         seeds__chunk_base = seeds__run_base + (seeds__rank * seeds__chunk_size)  # inclusive
         seeds__chunk_end = min((seeds__chunk_base + seeds__chunk_size), (seeds__run_base + seeds__run_size))  # excl
         # print(seeds__run_size, seeds__rank, seeds__run_base, seeds__run_size, seeds__chunk_size, seeds__chunk_base)
-        if seeds__rank == 0:
+        if master:
             msg = f'going to start a run of {seeds__run_size} on {seeds__num_processors} batches, ' \
-                f'{seeds__chunk_size} runs each'
+                f'{seeds__chunk_size} runs each.'
             log.write(msg + '\n')
             log.write(f'Thread {seeds__rank} starts with seed {seeds__chunk_base} (in) to {seeds__chunk_end} (ex)\n')
             log.flush()
@@ -244,7 +375,61 @@ Options:
             args["assigned_seed"] = assigned_seed
             args['log'] = log
             args['out'] = out
-            all_simulations_per_all_seeds[assigned_seed] = run_all_simulations_per_seed(args)
+
+            # The inline function starts from here.
+
+            all_profiles_measurements = []
+            n_candidates_range = range(c_min, c_max + 1)
+            for n_candidates in n_candidates_range:
+                # Generate deterministic list of candidates
+                terminal_gap = False
+                inter_gaps = True
+                all_candidates = generate_candidates_old(n_candidates, exhaustive, rand, terminal_gap, inter_gaps)
+                # print(n_candidates, all_candidates, flush=True)
+
+                # number of n_candidates <= n_balls <= 12
+                n_voters_range = range(max(v_min, n_candidates), v_max + 1)
+                for n_voters in n_voters_range:
+                    if n_voters % 2:
+                        continue
+
+                    out.write(f'\n------------ voters = {n_voters}, Candidates = {n_candidates}-------------------\n')
+                    out.flush()
+                    # log.write(f'\n------------ voters = {n_balls}, Candidates = {n_candidates}-------------------\n')
+
+                    # Generate deterministic list of voters
+                    # adjust bins acc to terminal and internal gaps
+                    terminal = 1 if terminal_gap else 0
+                    delta = 2 if inter_gaps else 1
+                    last_bin = terminal + (n_candidates * delta)
+                    if terminal and not inter_gaps:
+                        last_bin += 1
+                    deterministic_list_of_voters_position = permute_identityless(list(range(last_bin)), n_voters)
+                    # print('len = ', len(deterministic_list_of_voters_position), deterministic_list_of_voters_position,
+                    #       flush=True)
+
+                    # Use it :)
+                    determinant = deterministic_list_of_voters_position[
+                        assigned_seed % len(deterministic_list_of_voters_position)] if exhaustive else rand
+
+                    all_voters = generate_voters(n_voters, args['--voters'], utility, determinant)
+                    # print(all_voters, flush=True)
+
+                    # voters build their preferences
+                    for voter in all_voters:
+                        voter.build_profile(all_candidates, preference)
+                    # collective profile
+                    voter_profile = [voter.getprofile() for voter in all_voters]
+                    initial_status = Status.from_profile(voter_profile)
+
+                    # print(n_candidates, n_balls, assigned_seed, all_voters, flush=True)
+                    # continue  # for development purpose only
+
+                    streams = {'log': log, 'out': out}
+                    measurements = run_simulation_alleles(all_candidates, all_voters, initial_status, voter_profile,
+                                                          rand, streams, tie_breaking_rule, utility)
+                    all_profiles_measurements.append(measurements)
+            all_simulations_per_all_seeds[assigned_seed] = all_profiles_measurements
             out.close()
         # collect the simulations results from several threads
         buffer = comm.gather(all_simulations_per_all_seeds, root=0)
@@ -524,6 +709,7 @@ def sort_measurements(all_previously_run: dict):
     temp = all_previously_run.popitem()
     seed, sample_measurements_arr = temp[0], temp[1]
     all_previously_run[seed] = sample_measurements_arr
+
     n_candidates_range = sorted({msrmnt.n_candidates for msrmnt in sample_measurements_arr})
     n_voters_range = sorted({msrmnt.n_voters for msrmnt in sample_measurements_arr})
     # print(n_candidates_range)
@@ -539,7 +725,7 @@ def sort_measurements(all_previously_run: dict):
                           for sample_measurements_arr in all_previously_run.values()
                           for msrmnt in sample_measurements_arr
                           if msrmnt.n_candidates == n_candidates and msrmnt.n_voters == n_voters]
-            # measurements_summary = MeasurementsSummary.from_iterable(msrmnt_arr, n_candidates, n_voters)
+            # measurements_summary = MeasurementsSummary.from_iterable(msrmnt_arr, n_candidates, n_balls)
             all_measurements_by_candidates[n_candidates][n_voters] = msrmnt_arr
             all_measurements_by_voters.setdefault(n_voters, dict())[n_candidates] = msrmnt_arr
     return all_measurements_by_candidates, all_measurements_by_voters
@@ -620,7 +806,7 @@ def generate_voters(n_voters: int, voter_type: str, utility: Utility, determinan
     return all_voters
 
 
-def generate_candidates(n_candidates: int, exhaustive: bool, rand: Random, terminal_gap=False, inter_gaps=True):
+def generate_candidates_old(n_candidates: int, exhaustive: bool, rand: Random, terminal_gap=False, inter_gaps=True):
     all_candidates = []
     if exhaustive:
         offset = 1 if terminal_gap else 0
@@ -629,6 +815,26 @@ def generate_candidates(n_candidates: int, exhaustive: bool, rand: Random, termi
             c: Candidate = Candidate(chr(b'A'[0] + i), offset + (i * delta))
             all_candidates.append(c)
     else:
+        for i in range(n_candidates):
+            # c: Candidate = Candidate(chr(b'A'[0] + i), i+1)
+            c: Candidate = Candidate(chr(b'A'[0] + i), rand.random())
+            all_candidates.append(c)
+    return all_candidates
+
+
+def generate_candidates(n_candidates: int, exhaustive: bool, determinant: Union[Random, list, tuple] = None):
+    all_candidates = []
+    if exhaustive:
+        distribution: list = determinant
+        nxt = 0
+        for i in range(len(distribution)):
+            # maximum ONE candidate per bin
+            if distribution[i]:
+                c: Candidate = Candidate(chr(b'A'[0] + nxt), i)
+                nxt += 1
+                all_candidates.append(c)
+    else:
+        rand: Random = determinant
         for i in range(n_candidates):
             # c: Candidate = Candidate(chr(b'A'[0] + i), i+1)
             c: Candidate = Candidate(chr(b'A'[0] + i), rand.random())
