@@ -1,39 +1,3 @@
-from pandas.tests import arrays
-
-
-def words_permutations(alphabet: list, r: int, accept_repetition=True, accepts_mirror_symmetry=False, ret: list = list()) -> list:
-    return __words_permutations(alphabet, r, 0, list(), accept_repetition, accepts_mirror_symmetry, ret)
-
-
-def __words_permutations(alphabet: list, r: int, level_index: int, partial_result: list = None, accept_repetition=True,
-                         accepts_mirror_symmetry=False, ret: list = None) -> list:
-
-    # TODO check sizes of N and R
-    print(level_index, partial_result)
-
-    if level_index >= r:
-        ret.append(partial_result.copy())
-        # partial_result.pop()
-        return ret
-
-    # level is set in the call already
-
-    for partial_level_index in range(len(alphabet)):
-
-        # Reject symmetrical results
-        if not accepts_mirror_symmetry:
-            if level_index == 0 and partial_level_index >= r / 2:
-                return ret
-
-        item = alphabet[partial_level_index]
-
-        partial_result.append(item)
-        __words_permutations(alphabet, r, level_index + 1, partial_result, accept_repetition, accepts_mirror_symmetry,
-                             ret)
-        partial_result.pop()
-
-    return ret
-
 
 def permute_identityless(bin_names: list, n_voters: int, accepts_mirror_symmetry=False, ret: list = list()) -> list:
     """generate the exhaustive list of deterministic voters positions.

@@ -388,7 +388,7 @@ def run_all_simulations_per_seed(args) -> list:
             if terminal and not inter_gaps:
                 last_bin += 1
             deterministic_list_of_voters_choices = permute_identityless(list(range(last_bin)), n_voters, False, list())
-            print('len = ', len(deterministic_list_of_voters_choices), deterministic_list_of_voters_choices, flush=True)
+            # print('len = ', len(deterministic_list_of_voters_choices), deterministic_list_of_voters_choices, flush=True)
 
             # Use it :)
             determinant = deterministic_list_of_voters_choices[assigned_seed % len(deterministic_list_of_voters_choices)] if exhaustive else rand
