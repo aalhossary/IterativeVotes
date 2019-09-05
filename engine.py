@@ -380,15 +380,17 @@ def run_all_simulations_per_seed(args) -> list:
             out.flush()
             # log.write(f'\n------------ voters = {n_voters}, Candidates = {n_candidates}-------------------\n')
 
-            # Generate deterministic list of voters
-            # adjust bins acc to terminal and internal gaps
-            terminal = 1 if terminal_gap else 0
-            delta = 2 if inter_gaps else 1
-            last_bin = terminal + (n_candidates * delta)
-            if terminal and not inter_gaps:
-                last_bin += 1
-            deterministic_list_of_voters_choices = permute_identityless(list(range(last_bin)), n_voters, False, list())
-            # print('len = ', len(deterministic_list_of_voters_choices), deterministic_list_of_voters_choices, flush=True)
+            if exhaustive:
+                # Generate deterministic list of voters
+                # adjust bins acc to terminal and internal gaps
+                terminal = 1 if terminal_gap else 0
+                delta = 2 if inter_gaps else 1
+                last_bin = terminal + (n_candidates * delta)
+                if terminal and not inter_gaps:
+                    last_bin += 1
+                deterministic_list_of_voters_choices = permute_identityless(list(range(last_bin)), n_voters, False, list())
+                # print('len = ', len(deterministic_list_of_voters_choices), deterministic_list_of_voters_choices, flush=True)
+                
 
             # Use it :)
             determinant = deterministic_list_of_voters_choices[assigned_seed % len(deterministic_list_of_voters_choices)] if exhaustive else rand
