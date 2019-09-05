@@ -168,13 +168,14 @@ Options:
   -p, --preference=PREFERENCE   How a voter forms his ballot order 
                                 (single-peaked | general)                       [Default: single-peaked]
   --conv-threshold=THRESHOLD    Threshold of similarity of different profiles 
-                                sampling before considering the curve converged [Default: 0.08]
+                                sampling before considering the curve converged [Default: 0.05]
   -t, --tiebreakingrule=TIEBREAKINGRULE     How to behave in cases of draws 
                                 (lexicographic | random)                        [Default: lexicographic]
   -i, --initial-run-size=SIZE   Initial number of runs before testing for 
                                 convergence                                     [Default: 100]
   --voters=VOTERS       Type of voters (general | truthful | lazy)              [Default: general]
   -s, --seed=SEED       Randomization seed      [Default: 12345]
+  --show                Show results
   -h, --help            Print the help screen
   --version             Prints the version and exits
   BASE                  The base                [default: 2]
@@ -285,7 +286,8 @@ Options:
         log.write("Done.\n")
         log.flush()
         log.close()
-        plt.show()
+        if bool(args['--show']):
+            plt.show()
 
 
 def run_converged(all_measurements_sorted: dict, seeds_all_previously_run_count: int, target_measurements: list,
